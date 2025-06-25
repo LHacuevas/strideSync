@@ -14,10 +14,10 @@ import CurrentSettingsDisplay from './current-settings-display';
 import { Footprints, AlertTriangle, StepForward } from 'lucide-react';
 
 const PRESETS: Preset[] = [
-    { name: 'Steady Run', settings: { min: 170, max: 180, adjust: false, announcementInterval: 0 } },
-    { name: 'Intervals', settings: { min: 165, max: 185, adjust: true, holdLowDuration: 60, adjustUpRate: 5, adjustUpInterval: 15, holdHighDuration: 60, adjustDownRate: 5, adjustDownInterval: 15, announcementInterval: 60 } },
-    { name: 'Pyramid', settings: { min: 160, max: 180, adjust: true, holdLowDuration: 30, adjustUpRate: 2, adjustUpInterval: 10, holdHighDuration: 30, adjustDownRate: 2, adjustDownInterval: 10, announcementInterval: 45 } },
-    { name: 'Warm-up', settings: { min: 155, max: 170, adjust: false, announcementInterval: 0 } },
+    { name: 'Steady Run', settings: { min: 170, max: 180, adjust: false, announcementInterval: 0, beatFrequency: 'step' } },
+    { name: 'Intervals', settings: { min: 165, max: 185, adjust: true, holdLowDuration: 60, adjustUpRate: 5, adjustUpInterval: 15, holdHighDuration: 60, adjustDownRate: 5, adjustDownInterval: 15, announcementInterval: 60, beatFrequency: 'step' } },
+    { name: 'Pyramid', settings: { min: 160, max: 180, adjust: true, holdLowDuration: 30, adjustUpRate: 2, adjustUpInterval: 10, holdHighDuration: 30, adjustDownRate: 2, adjustDownInterval: 10, announcementInterval: 45, beatFrequency: 'cycle' } },
+    { name: 'Warm-up', settings: { min: 155, max: 170, adjust: false, announcementInterval: 0, beatFrequency: 'step' } },
 ];
 
 export default function StrideSyncDashboard() {
@@ -32,6 +32,7 @@ export default function StrideSyncDashboard() {
     adjustDownRate: 2,
     adjustDownInterval: 10,
     announcementInterval: 0,
+    beatFrequency: 'step',
   });
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [summary, setSummary] = useState<SummaryData>({ totalSteps: 0, sessionDuration: 0, avgCadence: 0, avgTargetCadence: 0, inZoneTime: 0 });

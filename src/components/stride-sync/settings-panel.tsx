@@ -8,7 +8,8 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Settings, Zap, Volume2 } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Settings, Zap, Volume2, Music4 } from 'lucide-react';
 
 interface SettingsPanelProps {
   settings: CadenceSettings;
@@ -44,6 +45,28 @@ export default function SettingsPanel({ settings, setSettings, presets, onSelect
               <span>Min: {settings.min}</span>
               <span>Max: {settings.max}</span>
             </div>
+          </div>
+          <Separator />
+          <div className="space-y-3">
+            <Label className="font-medium flex items-center gap-2">
+              <Music4 className="w-4 h-4 text-accent" />
+              Beat Frequency
+            </Label>
+            <RadioGroup
+              value={settings.beatFrequency}
+              onValueChange={(value: 'step' | 'cycle') => setSettings(s => ({ ...s, beatFrequency: value }))}
+              className="flex items-center gap-6 pt-1"
+              disabled={disabled}
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="step" id="r1" />
+                <Label htmlFor="r1" className="font-normal">Each Step</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="cycle" id="r2" />
+                <Label htmlFor="r2" className="font-normal">Each Leg Cycle</Label>
+              </div>
+            </RadioGroup>
           </div>
           <Separator />
           <div className="space-y-4">

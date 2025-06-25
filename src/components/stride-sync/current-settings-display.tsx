@@ -1,7 +1,7 @@
 "use client";
 
 import type { CadenceSettings } from '@/lib/types';
-import { Settings, ArrowDown, ArrowUp, Timer, Zap, Tag, Volume2 } from 'lucide-react';
+import { Settings, ArrowDown, ArrowUp, Timer, Zap, Tag, Volume2, Music4 } from 'lucide-react';
 
 interface CurrentSettingsDisplayProps {
   settings: CadenceSettings;
@@ -16,6 +16,7 @@ export default function CurrentSettingsDisplay({ settings, activePreset }: Curre
         <p className="flex items-center gap-1"><Tag className="w-3 h-3"/><strong>Preset:</strong> {activePreset || 'Custom'}</p>
         <p><strong>Range:</strong> {settings.min} - {settings.max} SPM</p>
         <p className="flex items-center gap-1"><Zap className="w-3 h-3"/><strong>Mode:</strong> {settings.adjust ? 'Dynamic' : 'Static'}</p>
+        <p className="flex items-center gap-1"><Music4 className="w-3 h-3"/><strong>Beat:</strong> {settings.beatFrequency === 'cycle' ? '1 per cycle' : '1 per step'}</p>
         {settings.announcementInterval > 0 && (
           <p className="flex items-center gap-1"><Volume2 className="w-3 h-3"/><strong>Announce:</strong> every {settings.announcementInterval}s</p>
         )}

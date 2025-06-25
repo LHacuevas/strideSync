@@ -9,6 +9,7 @@ export interface CadenceSettings {
   adjustDownRate: number; // in SPM
   adjustDownInterval: number; // in seconds
   announcementInterval: number; // in seconds
+  beatFrequency: 'step' | 'cycle';
 }
 
 export type SessionStatus = 'idle' | 'running' | 'paused';

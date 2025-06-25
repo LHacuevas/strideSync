@@ -73,21 +73,23 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       setCadence(0);
     }
   }, []);
-
+  
   const handleMotionEvent = useCallback((event: DeviceMotionEvent) => {
-    const { accelerationIncludingGravity } = event;
-    if (!accelerationIncludingGravity) return;
-  
-    const y = accelerationIncludingGravity.y;
-    if (y === null) return;
-  
-    const now = Date.now();
-    if (y > STEP_DETECTION_THRESHOLD && now - lastStepTime.current > STEP_COOLDOWN_MS) {
-      lastStepTime.current = now;
-      stepTimestamps.current.push(now);
-      calculateCadence();
+    if (status !== 'running') return;
+
+    const acceleration = event.accelerationIncludingGravity;
+    if (acceleration && acceleration.y) {
+      // Simple peak detection on the y-axis
+      if (Math.abs(acceleration.y) > STEP_DETECTION_THRESHOLD) {
+        const now = Date.now();
+        if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
+          lastStepTime.current = now;
+          stepTimestamps.current.push(now);
+          calculateCadence();
+        }
+      }
     }
-  }, [calculateCadence]);
+  }, [status, calculateCadence]);
 
   const simulateStep = useCallback(() => {
     const now = Date.now();
@@ -168,9 +170,10 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         setCurrentTargetCadence((settings.min + settings.max) / 2);
       }
       
+      const beatMultiplier = settings.beatFrequency === 'cycle' ? 2 : 1;
       metronomeLoop.current = new Tone.Loop(time => {
         synth.current?.triggerAttackRelease(noteRef.current, '8n', time);
-      }, `${60 / currentTargetCadence}s`).start(0);
+      }, `${(60 / currentTargetCadence) * beatMultiplier}s`).start(0);
 
       Tone.Transport.start();
     } else {
@@ -206,10 +209,11 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   }, [status, permission, settings, handleMotionEvent]);
 
   useEffect(() => {
-    if (status === 'running' && metronomeLoop.current) {
-      metronomeLoop.current.interval = `${60 / currentTargetCadence}s`;
+    if (status === 'running' && metronomeLoop.current && currentTargetCadence > 0) {
+        const beatMultiplier = settings.beatFrequency === 'cycle' ? 2 : 1;
+        metronomeLoop.current.interval = `${(60 / currentTargetCadence) * beatMultiplier}s`;
     }
-  }, [currentTargetCadence, status]);
+  }, [currentTargetCadence, status, settings.beatFrequency]);
 
   return { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps: stepTimestamps.current.length, simulateStep };
 }
