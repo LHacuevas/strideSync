@@ -8,11 +8,11 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Settings, Zap } from 'lucide-react';
+import { Settings, Zap, Volume2 } from 'lucide-react';
 
 interface SettingsPanelProps {
   settings: CadenceSettings;
-  setSettings: React.Dispatch<React.SetStateAction<CadenceSettings>>;
+  setSettings: (value: React.SetStateAction<CadenceSettings>) => void;
   presets: Preset[];
   onSelectPreset: (preset: Preset) => void;
   disabled: boolean;
@@ -94,6 +94,24 @@ export default function SettingsPanel({ settings, setSettings, presets, onSelect
               </div>
             )}
           </div>
+          <Separator />
+           <div className="space-y-4">
+                <Label htmlFor="announcement-interval" className="font-medium flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 text-accent" />
+                    Voice Announcements
+                </Label>
+                <div className="flex items-center gap-2">
+                    <Input 
+                        id="announcement-interval" 
+                        type="number" 
+                        value={settings.announcementInterval} 
+                        onChange={(e) => setSettings(s => ({ ...s, announcementInterval: parseInt(e.target.value) || 0 }))} 
+                        disabled={disabled}
+                        className="w-24"
+                    />
+                    <span className="text-sm text-muted-foreground">seconds interval (0 to disable)</span>
+                </div>
+           </div>
           <Separator />
            <div className="space-y-3">
              <Label className="font-medium">Presets</Label>

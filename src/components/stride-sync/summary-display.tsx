@@ -40,7 +40,7 @@ export default function SummaryDisplay({ summary, status }: SummaryDisplayProps)
                             <span className="text-xs text-muted-foreground">Total Steps</span>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-xl sm:text-2xl font-bold">{summary.avgCadence}</span>
+                            <span className="text-xl sm:text-2xl font-bold">{Math.round(summary.avgCadence)}</span>
                             <span className="text-xs text-muted-foreground">Avg. SPM</span>
                         </div>
                         <div className="flex flex-col">

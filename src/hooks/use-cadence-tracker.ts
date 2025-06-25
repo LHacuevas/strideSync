@@ -26,6 +26,19 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const synth = useRef<Tone.Synth | null>(null);
   const metronomeLoop = useRef<Tone.Loop | null>(null);
   const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
+  const noteRef = useRef('C5'); // For metronome tone
+
+  useEffect(() => {
+    let note = 'C5'; // In-zone / Default
+    if (status === 'running' && cadence > 0) {
+        if (cadence < settings.min) {
+            note = 'E4'; // below
+        } else if (cadence > settings.max) {
+            note = 'A4'; // above
+        }
+    }
+    noteRef.current = note;
+  }, [cadence, settings.min, settings.max, status]);
 
   const requestPermission = useCallback(async () => {
     if (typeof (DeviceMotionEvent as any).requestPermission !== 'function') {
@@ -156,8 +169,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       }
       
       metronomeLoop.current = new Tone.Loop(time => {
-        const inZone = cadence >= settings.min && cadence <= settings.max;
-        synth.current?.triggerAttackRelease(inZone ? 'C5' : 'G4', '8n', time);
+        synth.current?.triggerAttackRelease(noteRef.current, '8n', time);
       }, `${60 / currentTargetCadence}s`).start(0);
 
       Tone.Transport.start();

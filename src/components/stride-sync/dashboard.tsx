@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -11,13 +11,14 @@ import RealtimeDisplay from './realtime-display';
 import SessionControls from './session-controls';
 import SummaryDisplay from './summary-display';
 import CurrentSettingsDisplay from './current-settings-display';
-import { Footprints, AlertTriangle, StepForward } from 'lucide-react';
+import { Footprints, AlertTriangle, StepForward, Loader } from 'lucide-react';
+import { speak } from '@/ai/flows/tts-flow';
 
 const PRESETS: Preset[] = [
-    { name: 'Steady Run', settings: { min: 170, max: 180, adjust: false } },
-    { name: 'Intervals', settings: { min: 165, max: 185, adjust: true, holdLowDuration: 60, adjustUpRate: 5, adjustUpInterval: 15, holdHighDuration: 60, adjustDownRate: 5, adjustDownInterval: 15 } },
-    { name: 'Pyramid', settings: { min: 160, max: 180, adjust: true, holdLowDuration: 30, adjustUpRate: 2, adjustUpInterval: 10, holdHighDuration: 30, adjustDownRate: 2, adjustDownInterval: 10 } },
-    { name: 'Warm-up', settings: { min: 155, max: 170, adjust: false } },
+    { name: 'Steady Run', settings: { min: 170, max: 180, adjust: false, announcementInterval: 0 } },
+    { name: 'Intervals', settings: { min: 165, max: 185, adjust: true, holdLowDuration: 60, adjustUpRate: 5, adjustUpInterval: 15, holdHighDuration: 60, adjustDownRate: 5, adjustDownInterval: 15, announcementInterval: 60 } },
+    { name: 'Pyramid', settings: { min: 160, max: 180, adjust: true, holdLowDuration: 30, adjustUpRate: 2, adjustUpInterval: 10, holdHighDuration: 30, adjustDownRate: 2, adjustDownInterval: 10, announcementInterval: 45 } },
+    { name: 'Warm-up', settings: { min: 155, max: 170, adjust: false, announcementInterval: 0 } },
 ];
 
 export default function StrideSyncDashboard() {
@@ -31,10 +32,16 @@ export default function StrideSyncDashboard() {
     holdHighDuration: 30,
     adjustDownRate: 2,
     adjustDownInterval: 10,
+    announcementInterval: 0,
   });
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [summary, setSummary] = useState<SummaryData>({ totalSteps: 0, sessionDuration: 0, avgCadence: 0, avgTargetCadence: 0, inZoneTime: 0 });
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
+  const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
 
   const { toast } = useToast();
   const { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps, simulateStep } = useCadenceTracker({ settings, status });
@@ -52,6 +59,37 @@ export default function StrideSyncDashboard() {
       });
     }
   }, [error, toast]);
+  
+  useEffect(() => {
+    if (audioUrl && audioRef.current) {
+        audioRef.current.play().catch(e => console.error("Audio playback failed", e));
+    }
+  }, [audioUrl]);
+
+  useEffect(() => {
+    if (status !== 'running' || !settings.announcementInterval || settings.announcementInterval === 0) {
+      return;
+    }
+
+    const handleAnnouncement = async () => {
+      if (summary.avgCadence > 0 && !isGeneratingSpeech) {
+        const textToSpeak = `Average cadence is ${Math.round(summary.avgCadence)} steps per minute.`;
+        setIsGeneratingSpeech(true);
+        try {
+          const result = await speak(textToSpeak);
+          setAudioUrl(result.media);
+        } catch (e) {
+          console.error("TTS failed", e);
+          toast({ variant: 'destructive', title: 'TTS Error', description: 'Could not generate audio announcement.' });
+        } finally {
+            setIsGeneratingSpeech(false);
+        }
+      }
+    };
+
+    const interval = setInterval(handleAnnouncement, settings.announcementInterval * 1000);
+    return () => clearInterval(interval);
+  }, [status, settings.announcementInterval, summary.avgCadence, toast, isGeneratingSpeech]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -71,7 +109,7 @@ export default function StrideSyncDashboard() {
 
         setSummary(prev => ({
           ...prev,
-          avgCadence: Math.round(avgCadence),
+          avgCadence: avgCadence,
           avgTargetCadence: Math.round(avgTargetCadence),
           inZoneTime,
         }));
@@ -98,11 +136,17 @@ export default function StrideSyncDashboard() {
 
   const handleSelectPreset = (preset: Preset) => {
     setSettings(prev => ({ ...prev, ...preset.settings }));
+    setActivePreset(preset.name);
     toast({
       title: 'Preset Loaded',
       description: `${preset.name} settings have been applied.`,
     });
   };
+  
+  const handleSettingsChange = (value: React.SetStateAction<CadenceSettings>) => {
+    setSettings(value);
+    setActivePreset(null);
+  }
 
   return (
     <Card className="w-full max-w-lg mx-auto shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
@@ -125,12 +169,13 @@ export default function StrideSyncDashboard() {
             <SummaryDisplay summary={summary} status={status} />
             <SessionControls status={status} onStatusChange={handleStatusChange} />
              <div className="flex items-center justify-center gap-4 mt-2">
-                <Button onClick={simulateStep} variant="outline" size="sm">
+                <Button onClick={simulateStep} variant="outline" size="sm" disabled={status !== 'running'}>
                     <StepForward className="mr-2 h-4 w-4" />
                     Simulate Step
                 </Button>
+                {isGeneratingSpeech && <Loader className="h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
-            <CurrentSettingsDisplay settings={settings} />
+            <CurrentSettingsDisplay settings={settings} activePreset={activePreset} />
           </>
         ) : (
           <div className="flex flex-col items-center justify-center text-center p-8 rounded-lg bg-muted/50">
@@ -149,12 +194,13 @@ export default function StrideSyncDashboard() {
       <CardFooter>
         <SettingsPanel
           settings={settings}
-          setSettings={setSettings}
+          setSettings={handleSettingsChange}
           presets={PRESETS}
           onSelectPreset={handleSelectPreset}
           disabled={status !== 'idle'}
         />
       </CardFooter>
+      <audio ref={audioRef} src={audioUrl || ''} className="hidden" />
     </Card>
   );
 }

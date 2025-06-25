@@ -8,6 +8,7 @@ export interface CadenceSettings {
   holdHighDuration: number; // in seconds
   adjustDownRate: number; // in SPM
   adjustDownInterval: number; // in seconds
+  announcementInterval: number; // in seconds
 }
 
 export type SessionStatus = 'idle' | 'running' | 'paused';
