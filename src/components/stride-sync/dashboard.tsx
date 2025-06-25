@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -11,8 +11,7 @@ import RealtimeDisplay from './realtime-display';
 import SessionControls from './session-controls';
 import SummaryDisplay from './summary-display';
 import CurrentSettingsDisplay from './current-settings-display';
-import { Footprints, AlertTriangle, StepForward, Loader } from 'lucide-react';
-import { speak } from '@/ai/flows/tts-flow';
+import { Footprints, AlertTriangle, StepForward } from 'lucide-react';
 
 const PRESETS: Preset[] = [
     { name: 'Steady Run', settings: { min: 170, max: 180, adjust: false, announcementInterval: 0 } },
@@ -38,9 +37,6 @@ export default function StrideSyncDashboard() {
   const [summary, setSummary] = useState<SummaryData>({ totalSteps: 0, sessionDuration: 0, avgCadence: 0, avgTargetCadence: 0, inZoneTime: 0 });
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [activePreset, setActivePreset] = useState<string | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
-  const audioRef = useRef<HTMLAudioElement>(null);
 
 
   const { toast } = useToast();
@@ -60,36 +56,29 @@ export default function StrideSyncDashboard() {
     }
   }, [error, toast]);
   
-  useEffect(() => {
-    if (audioUrl && audioRef.current) {
-        audioRef.current.play().catch(e => console.error("Audio playback failed", e));
-    }
-  }, [audioUrl]);
 
   useEffect(() => {
     if (status !== 'running' || !settings.announcementInterval || settings.announcementInterval === 0) {
       return;
     }
 
-    const handleAnnouncement = async () => {
-      if (summary.avgCadence > 0 && !isGeneratingSpeech) {
-        const textToSpeak = `Average cadence is ${Math.round(summary.avgCadence)} steps per minute.`;
-        setIsGeneratingSpeech(true);
-        try {
-          const result = await speak(textToSpeak);
-          setAudioUrl(result.media);
-        } catch (e) {
-          console.error("TTS failed", e);
-          toast({ variant: 'destructive', title: 'TTS Error', description: 'Could not generate audio announcement.' });
-        } finally {
-            setIsGeneratingSpeech(false);
+    const handleAnnouncement = () => {
+      if (summary.avgCadence > 0) {
+        if ('speechSynthesis' in window) {
+            const textToSpeak = `La cadencia media es de ${Math.round(summary.avgCadence)} pasos por minuto.`;
+            const utterance = new SpeechSynthesisUtterance(textToSpeak);
+            utterance.lang = 'es-ES';
+            window.speechSynthesis.speak(utterance);
+        } else {
+            console.error("Browser does not support Speech Synthesis.");
+            toast({ variant: 'destructive', title: 'Error de TTS', description: 'Tu navegador no soporta los anuncios de voz.' });
         }
       }
     };
 
     const interval = setInterval(handleAnnouncement, settings.announcementInterval * 1000);
     return () => clearInterval(interval);
-  }, [status, settings.announcementInterval, summary.avgCadence, toast, isGeneratingSpeech]);
+  }, [status, settings.announcementInterval, summary.avgCadence, toast]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -173,7 +162,6 @@ export default function StrideSyncDashboard() {
                     <StepForward className="mr-2 h-4 w-4" />
                     Simulate Step
                 </Button>
-                {isGeneratingSpeech && <Loader className="h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
             <CurrentSettingsDisplay settings={settings} activePreset={activePreset} />
           </>
@@ -200,7 +188,6 @@ export default function StrideSyncDashboard() {
           disabled={status !== 'idle'}
         />
       </CardFooter>
-      <audio ref={audioRef} src={audioUrl || ''} className="hidden" />
     </Card>
   );
 }
