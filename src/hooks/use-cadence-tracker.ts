@@ -30,15 +30,16 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
 
   useEffect(() => {
     let note = 'C5'; // In-zone / Default
-    if (status === 'running' && cadence > 0) {
-        if (cadence < settings.min) {
-            note = 'E4'; // below
-        } else if (cadence > settings.max) {
-            note = 'A4'; // above
-        }
+    const zoneMargin = 3;
+    if (status === 'running' && cadence > 0 && currentTargetCadence > 0) {
+      if (cadence < currentTargetCadence - zoneMargin) {
+        note = 'G4'; // Below zone
+      } else if (cadence > currentTargetCadence + zoneMargin) {
+        note = 'E5'; // Above zone
+      }
     }
     noteRef.current = note;
-  }, [cadence, settings.min, settings.max, status]);
+  }, [cadence, currentTargetCadence, status]);
 
   const requestPermission = useCallback(async () => {
     if (typeof (DeviceMotionEvent as any).requestPermission !== 'function') {
@@ -85,20 +86,26 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
           lastStepTime.current = now;
           stepTimestamps.current.push(now);
-          calculateCadence();
         }
       }
     }
-  }, [status, calculateCadence]);
+  }, [status]);
 
   const simulateStep = useCallback(() => {
     const now = Date.now();
     if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
         lastStepTime.current = now;
         stepTimestamps.current.push(now);
-        calculateCadence();
     }
-  }, [calculateCadence]);
+  }, []);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | undefined;
+    if (status === 'running') {
+      interval = setInterval(calculateCadence, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [status, calculateCadence]);
 
 
   useEffect(() => {

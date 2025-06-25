@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useCadenceTracker } from '@/hooks/use-cadence-tracker';
-import type { CadenceSettings, SessionStatus, SummaryData, Preset } from '@/lib/types';
+import type { CadenceSettings, SessionStatus, SummaryData, Preset, ChartDataPoint } from '@/lib/types';
 import SettingsPanel from './settings-panel';
 import RealtimeDisplay from './realtime-display';
 import SessionControls from './session-controls';
@@ -19,6 +19,17 @@ const PRESETS: Preset[] = [
     { name: 'Pyramid', settings: { min: 160, max: 180, adjust: true, holdLowDuration: 30, adjustUpRate: 2, adjustUpInterval: 10, holdHighDuration: 30, adjustDownRate: 2, adjustDownInterval: 10, announcementInterval: 45, beatFrequency: 'cycle' } },
     { name: 'Warm-up', settings: { min: 155, max: 170, adjust: false, announcementInterval: 0, beatFrequency: 'step' } },
 ];
+
+const initialSummary: SummaryData = {
+    totalSteps: 0,
+    sessionDuration: 0,
+    avgCadence: 0,
+    avgTargetCadence: 0,
+    inZoneTime: 0,
+    belowZoneTime: 0,
+    aboveZoneTime: 0,
+    chartData: [],
+};
 
 export default function StrideSyncDashboard() {
   const [settings, setSettings] = useState<CadenceSettings>({
@@ -35,17 +46,16 @@ export default function StrideSyncDashboard() {
     beatFrequency: 'step',
   });
   const [status, setStatus] = useState<SessionStatus>('idle');
-  const [summary, setSummary] = useState<SummaryData>({ totalSteps: 0, sessionDuration: 0, avgCadence: 0, avgTargetCadence: 0, inZoneTime: 0 });
+  const [summary, setSummary] = useState<SummaryData>(initialSummary);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [activePreset, setActivePreset] = useState<string | null>(null);
-
 
   const { toast } = useToast();
   const { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps, simulateStep } = useCadenceTracker({ settings, status });
   
-  const cadences = useMemo(() => [], []);
-  const targetCadences = useMemo(() => [], []);
-  const inZoneTimestamps = useMemo(() => [], []);
+  const liveCadenceHistory = useRef<number[]>([]);
+  const liveTargetCadenceHistory = useRef<number[]>([]);
+  const liveChartData = useRef<ChartDataPoint[]>([]);
 
   useEffect(() => {
     if (error) {
@@ -64,15 +74,16 @@ export default function StrideSyncDashboard() {
     }
 
     const handleAnnouncement = () => {
-      if (summary.avgCadence > 0) {
+      const currentAvg = summary.avgCadence;
+      if (currentAvg > 0) {
         if ('speechSynthesis' in window) {
-            const textToSpeak = `La cadencia media es de ${Math.round(summary.avgCadence)} pasos por minuto.`;
+            const textToSpeak = `Average cadence is ${Math.round(currentAvg)} steps per minute.`;
             const utterance = new SpeechSynthesisUtterance(textToSpeak);
-            utterance.lang = 'es-ES';
+            utterance.lang = 'en-US';
             window.speechSynthesis.speak(utterance);
         } else {
             console.error("Browser does not support Speech Synthesis.");
-            toast({ variant: 'destructive', title: 'Error de TTS', description: 'Tu navegador no soporta los anuncios de voz.' });
+            toast({ variant: 'destructive', title: 'TTS Error', description: 'Your browser does not support voice announcements.' });
         }
       }
     };
@@ -86,37 +97,51 @@ export default function StrideSyncDashboard() {
     if (status === 'running' && sessionStartTime) {
       interval = setInterval(() => {
         const duration = (Date.now() - sessionStartTime) / 1000;
-        setSummary(prev => ({ ...prev, sessionDuration: duration, totalSteps }));
+        
+        if (cadence > 0) liveCadenceHistory.current.push(cadence);
+        if (currentTargetCadence > 0) liveTargetCadenceHistory.current.push(currentTargetCadence);
+        liveChartData.current.push({ time: duration, actual: cadence > 0 ? cadence : null, target: currentTargetCadence });
 
-        if (cadence > 0) cadences.push(cadence);
-        if (currentTargetCadence > 0) targetCadences.push(currentTargetCadence);
-        const inZone = cadence >= settings.min && cadence <= settings.max;
-        if(inZone) inZoneTimestamps.push(Date.now());
+        const zoneMargin = 3;
+        let { inZoneTime, belowZoneTime, aboveZoneTime } = summary;
 
-        const avgCadence = cadences.length ? cadences.reduce((a, b) => a + b, 0) / cadences.length : 0;
-        const avgTargetCadence = targetCadences.length ? targetCadences.reduce((a, b) => a + b, 0) / targetCadences.length : 0;
-        const inZoneTime = inZoneTimestamps.length ? (inZoneTimestamps.length) * 1 : 0; // Assuming 1s interval
+        if (cadence > 0 && currentTargetCadence > 0) {
+          if (cadence < currentTargetCadence - zoneMargin) {
+            belowZoneTime += 1;
+          } else if (cadence > currentTargetCadence + zoneMargin) {
+            aboveZoneTime += 1;
+          } else {
+            inZoneTime += 1;
+          }
+        }
+        
+        const avgCadence = liveCadenceHistory.current.length ? liveCadenceHistory.current.reduce((a, b) => a + b, 0) / liveCadenceHistory.current.length : 0;
+        const avgTargetCadence = liveTargetCadenceHistory.current.length ? liveTargetCadenceHistory.current.reduce((a, b) => a + b, 0) / liveTargetCadenceHistory.current.length : 0;
 
-        setSummary(prev => ({
-          ...prev,
-          avgCadence: avgCadence,
+        setSummary({
+          sessionDuration: duration,
+          totalSteps,
+          avgCadence,
           avgTargetCadence: Math.round(avgTargetCadence),
           inZoneTime,
-        }));
+          belowZoneTime,
+          aboveZoneTime,
+          chartData: [...liveChartData.current],
+        });
 
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [status, sessionStartTime, cadence, settings, totalSteps, currentTargetCadence, cadences, targetCadences, inZoneTimestamps]);
+  }, [status, sessionStartTime, cadence, totalSteps, currentTargetCadence, summary]);
 
   const handleStatusChange = (newStatus: SessionStatus) => {
     if (newStatus === 'running' && status !== 'running') {
       if (status === 'idle') {
+        liveCadenceHistory.current = [];
+        liveTargetCadenceHistory.current = [];
+        liveChartData.current = [];
+        setSummary(initialSummary);
         setSessionStartTime(Date.now());
-        setSummary({ totalSteps: 0, sessionDuration: 0, avgCadence: 0, avgTargetCadence: 0, inZoneTime: 0 });
-        cadences.length = 0;
-        targetCadences.length = 0;
-        inZoneTimestamps.length = 0;
       } else { // Resuming from pause
         setSessionStartTime(prev => prev ? Date.now() - (summary.sessionDuration * 1000) : Date.now());
       }

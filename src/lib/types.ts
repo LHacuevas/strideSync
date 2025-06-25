@@ -14,12 +14,21 @@ export interface CadenceSettings {
 
 export type SessionStatus = 'idle' | 'running' | 'paused';
 
+export interface ChartDataPoint {
+  time: number;
+  actual: number | null;
+  target: number;
+}
+
 export interface SummaryData {
   totalSteps: number;
   sessionDuration: number;
   avgCadence: number;
   avgTargetCadence: number;
   inZoneTime: number;
+  belowZoneTime: number;
+  aboveZoneTime: number;
+  chartData: ChartDataPoint[];
 }
 
 export interface Preset {
