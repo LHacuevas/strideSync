@@ -11,8 +11,8 @@ interface CadenceTrackerProps {
   status: 'idle' | 'running' | 'paused';
 }
 
-const STEP_DETECTION_THRESHOLD = 15;
-const STEP_COOLDOWN_MS = 200; 
+const STEP_DETECTION_THRESHOLD = 2.0; // Adjusted for filtered acceleration magnitude
+const STEP_COOLDOWN_MS = 200; // 300 SPM max
 
 export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const [permission, setPermission] = useState<PermissionState>('prompt');
@@ -27,6 +27,10 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const metronomeLoop = useRef<Tone.Loop | null>(null);
   const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
   const noteRef = useRef('C5'); // For metronome tone
+
+  // Refs for more robust step detection
+  const gravity = useRef([0, 0, 0]);
+  const lastMagnitude = useRef(0);
 
   const speakText = useCallback((text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -52,17 +56,33 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   }, [cadence, currentTargetCadence, status]);
 
   const requestPermission = useCallback(async () => {
-    if (typeof (DeviceMotionEvent as any).requestPermission !== 'function') {
-      setPermission('granted');
-      return;
-    }
+    // Standard permission request for DeviceMotion and DeviceOrientation which is required on iOS 13+
+    const requestMotionPermission = async () => {
+      if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
+        return await (DeviceMotionEvent as any).requestPermission();
+      }
+      return 'granted';
+    };
+    
+    const requestOrientationPermission = async () => {
+      if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+        return await (DeviceOrientationEvent as any).requestPermission();
+      }
+      return 'granted';
+    };
+
     try {
-      const permissionState = await (DeviceMotionEvent as any).requestPermission();
-      if (permissionState === 'granted') {
+      // Requesting both seems to be more reliable in triggering the prompt.
+      const [motionState, orientationState] = await Promise.all([
+          requestMotionPermission(),
+          requestOrientationPermission()
+      ]);
+
+      if (motionState === 'granted' && orientationState === 'granted') {
         setPermission('granted');
       } else {
         setPermission('denied');
-        setError('Motion access denied. Please enable it in your browser settings.');
+        setError('Motion access denied. You may need to grant it in your browser\'s settings.');
       }
     } catch (err) {
       setError('Error requesting motion permission.');
@@ -88,16 +108,39 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const handleMotionEvent = useCallback((event: DeviceMotionEvent) => {
     if (status !== 'running') return;
 
-    const acceleration = event.accelerationIncludingGravity;
-    if (acceleration && acceleration.y) {
-      // Simple peak detection on the y-axis
-      if (Math.abs(acceleration.y) > STEP_DETECTION_THRESHOLD) {
-        const now = Date.now();
-        if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
-          lastStepTime.current = now;
-          stepTimestamps.current.push(now);
-        }
+    // We use `acceleration` which includes gravity, and then filter gravity out.
+    const acc = event.acceleration;
+
+    if (acc && acc.x != null && acc.y != null && acc.z != null) {
+      const alpha = 0.8; // High-pass filter coefficient.
+
+      // Isolate gravity from the sensor reading using a low-pass filter.
+      gravity.current[0] = alpha * gravity.current[0] + (1 - alpha) * acc.x;
+      gravity.current[1] = alpha * gravity.current[1] + (1 - alpha) * acc.y;
+      gravity.current[2] = alpha * gravity.current[2] + (1 - alpha) * acc.z;
+
+      // Remove the gravity component to get linear acceleration.
+      const linearAcceleration = {
+        x: acc.x - gravity.current[0],
+        y: acc.y - gravity.current[1],
+        z: acc.z - gravity.current[2],
+      };
+      
+      const magnitude = Math.sqrt(
+        linearAcceleration.x ** 2 +
+        linearAcceleration.y ** 2 +
+        linearAcceleration.z ** 2
+      );
+
+      // Simple peak detection: Look for a significant rise in acceleration magnitude.
+      const now = Date.now();
+      if (magnitude > STEP_DETECTION_THRESHOLD && lastMagnitude.current <= STEP_DETECTION_THRESHOLD) {
+          if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
+            lastStepTime.current = now;
+            stepTimestamps.current.push(now);
+          }
       }
+      lastMagnitude.current = magnitude;
     }
   }, [status]);
 
@@ -113,6 +156,9 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     let interval: NodeJS.Timeout | undefined;
     if (status === 'running') {
       interval = setInterval(calculateCadence, 1000);
+    } else {
+      lastMagnitude.current = 0;
+      gravity.current = [0, 0, 0];
     }
     return () => clearInterval(interval);
   }, [status, calculateCadence]);
@@ -147,6 +193,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
                     const nextTarget = prev + settings.adjustUpRate;
                     if (nextTarget >= settings.max) {
                         adjustmentState = 'holding-high';
+                        speakText('Hold');
                         schedule(tick, settings.holdHighDuration);
                         return settings.max;
                     } else {
@@ -165,6 +212,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
                     const nextTarget = prev - settings.adjustDownRate;
                     if (nextTarget <= settings.min) {
                         adjustmentState = 'holding-low';
+                        speakText('Hold');
                         schedule(tick, settings.holdLowDuration);
                         return settings.min;
                     } else {
@@ -177,7 +225,9 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     };
 
     if (status === 'running' && permission === 'granted') {
-      window.addEventListener('devicemotion', handleMotionEvent);
+      // Add a listener for device motion events. 'true' for capture phase.
+      window.addEventListener('devicemotion', handleMotionEvent, true);
+      // Ensure the audio context is running
       Tone.start();
       if (!synth.current) synth.current = new Tone.Synth().toDestination();
 
@@ -190,13 +240,17 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       }
       
       const beatMultiplier = settings.beatFrequency === 'cycle' ? 2 : 1;
+      // Use the initial target cadence for the loop setup. It will be updated by the other effect.
+      const initialTarget = settings.adjust ? settings.min : (settings.min + settings.max) / 2;
+      const initialInterval = initialTarget > 0 ? (60 / initialTarget) * beatMultiplier : 1;
+
       metronomeLoop.current = new Tone.Loop(time => {
         synth.current?.triggerAttackRelease(noteRef.current, '8n', time);
-      }, `${(60 / currentTargetCadence) * beatMultiplier}s`).start(0);
+      }, `${initialInterval}s`).start(0);
 
       Tone.Transport.start();
     } else {
-      window.removeEventListener('devicemotion', handleMotionEvent);
+      window.removeEventListener('devicemotion', handleMotionEvent, true);
       Tone.Transport.pause();
       clearAdjustment();
       if (metronomeLoop.current) {
@@ -215,7 +269,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     }
     
     return () => {
-      window.removeEventListener('devicemotion', handleMotionEvent);
+      window.removeEventListener('devicemotion', handleMotionEvent, true);
       if (metronomeLoop.current) {
         metronomeLoop.current.stop(0).dispose();
       }
@@ -230,7 +284,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   useEffect(() => {
     if (status === 'running' && metronomeLoop.current && currentTargetCadence > 0) {
         const beatMultiplier = settings.beatFrequency === 'cycle' ? 2 : 1;
-        metronomeLoop.current.interval = `${(60 / currentTargetCadence) * beatMultiplier}s`;
+        metronomeLoop.current.interval = (60 / currentTargetCadence) * beatMultiplier;
     }
   }, [currentTargetCadence, status, settings.beatFrequency]);
 
