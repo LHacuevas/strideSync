@@ -11,8 +11,8 @@ interface CadenceTrackerProps {
   status: 'idle' | 'running' | 'paused';
 }
 
-const STEP_DETECTION_THRESHOLD = 2.0; // Adjusted for filtered acceleration magnitude
-const STEP_COOLDOWN_MS = 200; // 300 SPM max
+const STEP_DETECTION_THRESHOLD = 15; // m/s^2, for accelerationIncludingGravity
+const STEP_COOLDOWN_MS = 200; // Corresponds to a max of 300 SPM
 
 export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const [permission, setPermission] = useState<PermissionState>('prompt');
@@ -27,9 +27,6 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const metronomeLoop = useRef<Tone.Loop | null>(null);
   const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
   const noteRef = useRef('C5'); // For metronome tone
-
-  // Refs for more robust step detection
-  const gravity = useRef([0, 0, 0]);
   const lastMagnitude = useRef(0);
 
   const speakText = useCallback((text: string) => {
@@ -108,32 +105,14 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const handleMotionEvent = useCallback((event: DeviceMotionEvent) => {
     if (status !== 'running') return;
 
-    // We use `acceleration` which includes gravity, and then filter gravity out.
-    const acc = event.acceleration;
+    // Use accelerationIncludingGravity for more consistent data across devices.
+    const acc = event.accelerationIncludingGravity;
 
     if (acc && acc.x != null && acc.y != null && acc.z != null) {
-      const alpha = 0.8; // High-pass filter coefficient.
-
-      // Isolate gravity from the sensor reading using a low-pass filter.
-      gravity.current[0] = alpha * gravity.current[0] + (1 - alpha) * acc.x;
-      gravity.current[1] = alpha * gravity.current[1] + (1 - alpha) * acc.y;
-      gravity.current[2] = alpha * gravity.current[2] + (1 - alpha) * acc.z;
-
-      // Remove the gravity component to get linear acceleration.
-      const linearAcceleration = {
-        x: acc.x - gravity.current[0],
-        y: acc.y - gravity.current[1],
-        z: acc.z - gravity.current[2],
-      };
-      
-      const magnitude = Math.sqrt(
-        linearAcceleration.x ** 2 +
-        linearAcceleration.y ** 2 +
-        linearAcceleration.z ** 2
-      );
-
-      // Simple peak detection: Look for a significant rise in acceleration magnitude.
+      const magnitude = Math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2);
       const now = Date.now();
+
+      // Detect a step when magnitude spikes above the threshold from a lower value.
       if (magnitude > STEP_DETECTION_THRESHOLD && lastMagnitude.current <= STEP_DETECTION_THRESHOLD) {
           if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
             lastStepTime.current = now;
@@ -158,7 +137,6 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       interval = setInterval(calculateCadence, 1000);
     } else {
       lastMagnitude.current = 0;
-      gravity.current = [0, 0, 0];
     }
     return () => clearInterval(interval);
   }, [status, calculateCadence]);
