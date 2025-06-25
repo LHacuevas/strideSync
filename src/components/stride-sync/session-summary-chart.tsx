@@ -31,10 +31,11 @@ export default function SessionSummaryChart({ data, summary }: SessionSummaryCha
         },
     };
     
-    const { belowZoneTime, inZoneTime, aboveZoneTime, sessionDuration } = summary;
-    const belowPercentage = sessionDuration > 0 ? (belowZoneTime / sessionDuration) * 100 : 0;
-    const inZonePercentage = sessionDuration > 0 ? (inZoneTime / sessionDuration) * 100 : 0;
-    const abovePercentage = sessionDuration > 0 ? (aboveZoneTime / sessionDuration) * 100 : 0;
+    const { belowZoneTime, inZoneTime, aboveZoneTime } = summary;
+    const totalZoneTime = belowZoneTime + inZoneTime + aboveZoneTime;
+    const belowPercentage = totalZoneTime > 0 ? (belowZoneTime / totalZoneTime) * 100 : 0;
+    const inZonePercentage = totalZoneTime > 0 ? (inZoneTime / totalZoneTime) * 100 : 0;
+    const abovePercentage = totalZoneTime > 0 ? (aboveZoneTime / totalZoneTime) * 100 : 0;
 
     return (
         <Card className="bg-muted/30 mt-6 border-dashed">

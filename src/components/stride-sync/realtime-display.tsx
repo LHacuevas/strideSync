@@ -10,10 +10,12 @@ interface RealtimeDisplayProps {
   targetCadence: number;
   range: { min: number; max: number };
   status: SessionStatus;
+  isDynamic: boolean;
 }
 
-export default function RealtimeDisplay({ cadence, targetCadence, range, status }: RealtimeDisplayProps) {
-  const inZone = cadence >= range.min && cadence <= range.max;
+export default function RealtimeDisplay({ cadence, targetCadence, range, status, isDynamic }: RealtimeDisplayProps) {
+  const zoneMargin = 3;
+  const inZone = status === 'running' && Math.abs(cadence - targetCadence) <= zoneMargin;
   const isIdle = status === 'idle';
 
   const progress = isIdle ? 50 : Math.max(0, Math.min(100, ((cadence - range.min) / (range.max - range.min)) * 100));
@@ -44,7 +46,7 @@ export default function RealtimeDisplay({ cadence, targetCadence, range, status 
       <div className="w-full max-w-xs space-y-2">
          <div className="flex items-center justify-center gap-2 font-medium text-muted-foreground">
             <Target className="w-4 h-4" />
-            <span>Target: {Math.round(targetCadence)} SPM ({range.min}-{range.max})</span>
+            <span>Target: {Math.round(targetCadence)} SPM {isDynamic && `(${range.min}-${range.max})`}</span>
          </div>
         <Progress value={progress} className={cn("h-3 transition-all", inZone && status !== 'idle' ? "[&>div]:bg-primary" : "[&>div]:bg-accent")} />
         <div className="flex justify-between text-xs text-muted-foreground">

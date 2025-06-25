@@ -28,6 +28,16 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
   const noteRef = useRef('C5'); // For metronome tone
 
+  const speakText = useCallback((text: string) => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        window.speechSynthesis.speak(utterance);
+    } else {
+        console.error("Browser does not support Speech Synthesis.");
+    }
+  }, []);
+
   useEffect(() => {
     let note = 'C5'; // In-zone / Default
     const zoneMargin = 3;
@@ -129,6 +139,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         switch (adjustmentState) {
             case 'holding-low':
                 adjustmentState = 'increasing';
+                speakText('Up');
                 schedule(tick, settings.holdLowDuration);
                 break;
             case 'increasing':
@@ -146,6 +157,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
                 break;
             case 'holding-high':
                 adjustmentState = 'decreasing';
+                speakText('Down');
                 schedule(tick, settings.holdHighDuration);
                 break;
             case 'decreasing':
@@ -213,7 +225,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         synth.current = null;
       }
     };
-  }, [status, permission, settings, handleMotionEvent]);
+  }, [status, permission, settings, handleMotionEvent, speakText]);
 
   useEffect(() => {
     if (status === 'running' && metronomeLoop.current && currentTargetCadence > 0) {

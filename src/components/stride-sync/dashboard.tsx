@@ -180,6 +180,7 @@ export default function StrideSyncDashboard() {
               targetCadence={currentTargetCadence}
               range={{ min: settings.min, max: settings.max }}
               status={status}
+              isDynamic={settings.adjust}
             />
             <SummaryDisplay summary={summary} status={status} />
             <SessionControls status={status} onStatusChange={handleStatusChange} />
