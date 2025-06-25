@@ -10,30 +10,34 @@ import SettingsPanel from './settings-panel';
 import RealtimeDisplay from './realtime-display';
 import SessionControls from './session-controls';
 import SummaryDisplay from './summary-display';
-import { Footprints, AlertTriangle } from 'lucide-react';
+import CurrentSettingsDisplay from './current-settings-display';
+import { Footprints, AlertTriangle, StepForward } from 'lucide-react';
 
 const PRESETS: Preset[] = [
-  { name: 'Run Track', settings: { min: 170, max: 180, adjust: false } },
-  { name: 'Improve Run Track', settings: { min: 175, max: 185, adjust: true, adjustRate: 5, adjustDuration: 10 } },
-  { name: 'Run Hills', settings: { min: 160, max: 175, adjust: false } },
-  { name: 'Jump Rope', settings: { min: 120, max: 140, adjust: false } },
-  { name: 'Improve Jump Rope', settings: { min: 130, max: 150, adjust: true, adjustRate: 10, adjustDuration: 5 } },
+    { name: 'Steady Run', settings: { min: 170, max: 180, adjust: false } },
+    { name: 'Intervals', settings: { min: 165, max: 185, adjust: true, holdLowDuration: 60, adjustUpRate: 5, adjustUpInterval: 15, holdHighDuration: 60, adjustDownRate: 5, adjustDownInterval: 15 } },
+    { name: 'Pyramid', settings: { min: 160, max: 180, adjust: true, holdLowDuration: 30, adjustUpRate: 2, adjustUpInterval: 10, holdHighDuration: 30, adjustDownRate: 2, adjustDownInterval: 10 } },
+    { name: 'Warm-up', settings: { min: 155, max: 170, adjust: false } },
 ];
 
 export default function StrideSyncDashboard() {
   const [settings, setSettings] = useState<CadenceSettings>({
-    min: 170,
-    max: 180,
+    min: 160,
+    max: 175,
     adjust: false,
-    adjustRate: 5,
-    adjustDuration: 10,
+    holdLowDuration: 30,
+    adjustUpRate: 2,
+    adjustUpInterval: 10,
+    holdHighDuration: 30,
+    adjustDownRate: 2,
+    adjustDownInterval: 10,
   });
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [summary, setSummary] = useState<SummaryData>({ totalSteps: 0, sessionDuration: 0, avgCadence: 0, avgTargetCadence: 0, inZoneTime: 0 });
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
 
   const { toast } = useToast();
-  const { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps } = useCadenceTracker({ settings, status });
+  const { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps, simulateStep } = useCadenceTracker({ settings, status });
   
   const cadences = useMemo(() => [], []);
   const targetCadences = useMemo(() => [], []);
@@ -56,8 +60,8 @@ export default function StrideSyncDashboard() {
         const duration = (Date.now() - sessionStartTime) / 1000;
         setSummary(prev => ({ ...prev, sessionDuration: duration, totalSteps }));
 
-        cadences.push(cadence);
-        targetCadences.push(currentTargetCadence);
+        if (cadence > 0) cadences.push(cadence);
+        if (currentTargetCadence > 0) targetCadences.push(currentTargetCadence);
         const inZone = cadence >= settings.min && cadence <= settings.max;
         if(inZone) inZoneTimestamps.push(Date.now());
 
@@ -78,12 +82,16 @@ export default function StrideSyncDashboard() {
   }, [status, sessionStartTime, cadence, settings, totalSteps, currentTargetCadence, cadences, targetCadences, inZoneTimestamps]);
 
   const handleStatusChange = (newStatus: SessionStatus) => {
-    if (newStatus === 'running' && status === 'idle') {
-      setSessionStartTime(Date.now());
-      setSummary({ totalSteps: 0, sessionDuration: 0, avgCadence: 0, avgTargetCadence: 0, inZoneTime: 0 });
-      cadences.length = 0;
-      targetCadences.length = 0;
-      inZoneTimestamps.length = 0;
+    if (newStatus === 'running' && status !== 'running') {
+      if (status === 'idle') {
+        setSessionStartTime(Date.now());
+        setSummary({ totalSteps: 0, sessionDuration: 0, avgCadence: 0, avgTargetCadence: 0, inZoneTime: 0 });
+        cadences.length = 0;
+        targetCadences.length = 0;
+        inZoneTimestamps.length = 0;
+      } else { // Resuming from pause
+        setSessionStartTime(prev => prev ? Date.now() - (summary.sessionDuration * 1000) : Date.now());
+      }
     }
     setStatus(newStatus);
   };
@@ -116,6 +124,13 @@ export default function StrideSyncDashboard() {
             />
             <SummaryDisplay summary={summary} status={status} />
             <SessionControls status={status} onStatusChange={handleStatusChange} />
+             <div className="flex items-center justify-center gap-4 mt-2">
+                <Button onClick={simulateStep} variant="outline" size="sm">
+                    <StepForward className="mr-2 h-4 w-4" />
+                    Simulate Step
+                </Button>
+            </div>
+            <CurrentSettingsDisplay settings={settings} />
           </>
         ) : (
           <div className="flex flex-col items-center justify-center text-center p-8 rounded-lg bg-muted/50">

@@ -2,8 +2,12 @@ export interface CadenceSettings {
   min: number;
   max: number;
   adjust: boolean;
-  adjustRate: number;
-  adjustDuration: number;
+  holdLowDuration: number; // in seconds
+  adjustUpRate: number; // in SPM
+  adjustUpInterval: number; // in seconds
+  holdHighDuration: number; // in seconds
+  adjustDownRate: number; // in SPM
+  adjustDownInterval: number; // in seconds
 }
 
 export type SessionStatus = 'idle' | 'running' | 'paused';

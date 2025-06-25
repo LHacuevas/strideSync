@@ -8,7 +8,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Settings, Zap, ChevronsUpDown } from 'lucide-react';
+import { Settings, Zap } from 'lucide-react';
 
 interface SettingsPanelProps {
   settings: CadenceSettings;
@@ -31,20 +31,19 @@ export default function SettingsPanel({ settings, setSettings, presets, onSelect
         <AccordionContent className="space-y-6 pt-4">
           <div className="space-y-4">
             <Label htmlFor="cadence-range" className="font-medium">Cadence Range (SPM)</Label>
-            <div className="flex justify-between items-center text-sm text-muted-foreground">
-              <span>{settings.min}</span>
-              <span>{(settings.min + settings.max) / 2}</span>
-              <span>{settings.max}</span>
-            </div>
             <Slider
               id="cadence-range"
-              min={80}
-              max={240}
+              min={150}
+              max={200}
               step={1}
               value={[settings.min, settings.max]}
               onValueChange={([min, max]) => setSettings(s => ({ ...s, min, max }))}
               disabled={disabled}
             />
+            <div className="flex justify-between items-center text-sm text-muted-foreground px-1">
+              <span>Min: {settings.min}</span>
+              <span>Max: {settings.max}</span>
+            </div>
           </div>
           <Separator />
           <div className="space-y-4">
@@ -61,26 +60,36 @@ export default function SettingsPanel({ settings, setSettings, presets, onSelect
               />
             </div>
             {settings.adjust && (
-              <div className="grid grid-cols-2 gap-4 pt-2">
-                <div className="space-y-2">
-                  <Label htmlFor="adjust-rate">Increase Rate (%)</Label>
-                  <Input
-                    id="adjust-rate"
-                    type="number"
-                    value={settings.adjustRate}
-                    onChange={(e) => setSettings(s => ({ ...s, adjustRate: parseInt(e.target.value, 10) || 0 }))}
-                    disabled={disabled}
-                  />
+              <div className="space-y-4 pt-2">
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="hold-low">Hold Low (s)</Label>
+                        <Input id="hold-low" type="number" value={settings.holdLowDuration} onChange={(e) => setSettings(s => ({ ...s, holdLowDuration: parseInt(e.target.value) || 0 }))} disabled={disabled} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="hold-high">Hold High (s)</Label>
+                        <Input id="hold-high" type="number" value={settings.holdHighDuration} onChange={(e) => setSettings(s => ({ ...s, holdHighDuration: parseInt(e.target.value) || 0 }))} disabled={disabled} />
+                    </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="adjust-duration">Duration (min)</Label>
-                  <Input
-                    id="adjust-duration"
-                    type="number"
-                    value={settings.adjustDuration}
-                    onChange={(e) => setSettings(s => ({ ...s, adjustDuration: parseInt(e.target.value, 10) || 0 }))}
-                    disabled={disabled}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="adjust-up-rate">Increase (+SPM)</Label>
+                        <Input id="adjust-up-rate" type="number" value={settings.adjustUpRate} onChange={(e) => setSettings(s => ({ ...s, adjustUpRate: parseInt(e.target.value) || 0 }))} disabled={disabled} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="adjust-up-interval">... every (s)</Label>
+                        <Input id="adjust-up-interval" type="number" value={settings.adjustUpInterval} onChange={(e) => setSettings(s => ({ ...s, adjustUpInterval: parseInt(e.target.value) || 0 }))} disabled={disabled} />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="adjust-down-rate">Decrease (-SPM)</Label>
+                        <Input id="adjust-down-rate" type="number" value={settings.adjustDownRate} onChange={(e) => setSettings(s => ({ ...s, adjustDownRate: parseInt(e.target.value) || 0 }))} disabled={disabled} />
+                    </div>
+                    <div className="space-y-2">
+                        <Label htmlFor="adjust-down-interval">... every (s)</Label>
+                        <Input id="adjust-down-interval" type="number" value={settings.adjustDownInterval} onChange={(e) => setSettings(s => ({ ...s, adjustDownInterval: parseInt(e.target.value) || 0 }))} disabled={disabled} />
+                    </div>
                 </div>
               </div>
             )}
@@ -88,7 +97,7 @@ export default function SettingsPanel({ settings, setSettings, presets, onSelect
           <Separator />
            <div className="space-y-3">
              <Label className="font-medium">Presets</Label>
-             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+             <div className="grid grid-cols-2 sm:grid-cols-2 gap-2">
                 {presets.map(preset => (
                     <Button
                         key={preset.name}

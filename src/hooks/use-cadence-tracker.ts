@@ -2,17 +2,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as Tone from 'tone';
+import type { CadenceSettings, SessionStatus } from '@/lib/types';
 
 type PermissionState = 'prompt' | 'granted' | 'denied';
 
 interface CadenceTrackerProps {
-  settings: {
-    min: number;
-    max: number;
-    adjust: boolean;
-    adjustRate: number;
-    adjustDuration: number;
-  };
+  settings: CadenceSettings;
   status: 'idle' | 'running' | 'paused';
 }
 
@@ -23,18 +18,17 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const [permission, setPermission] = useState<PermissionState>('prompt');
   const [cadence, setCadence] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [currentTargetCadence, setCurrentTargetCadence] = useState((settings.min + settings.max) / 2);
+  const [currentTargetCadence, setCurrentTargetCadence] = useState(settings.min);
   
   const lastStepTime = useRef(0);
   const stepTimestamps = useRef<number[]>([]);
   
   const synth = useRef<Tone.Synth | null>(null);
   const metronomeLoop = useRef<Tone.Loop | null>(null);
-  const adjustmentInterval = useRef<NodeJS.Timeout | null>(null);
+  const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const requestPermission = useCallback(async () => {
     if (typeof (DeviceMotionEvent as any).requestPermission !== 'function') {
-      // For non-iOS 13+ browsers
       setPermission('granted');
       return;
     }
@@ -52,6 +46,21 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     }
   }, []);
 
+  const calculateCadence = useCallback(() => {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60000;
+    stepTimestamps.current = stepTimestamps.current.filter(ts => ts > oneMinuteAgo);
+    
+    const recentSteps = stepTimestamps.current.filter(ts => ts > now - 5000);
+    if (recentSteps.length > 1) {
+      const durationSeconds = (now - recentSteps[0]) / 1000;
+      const newCadence = Math.round((recentSteps.length / durationSeconds) * 60);
+      setCadence(newCadence);
+    } else if (stepTimestamps.current.length === 0) {
+      setCadence(0);
+    }
+  }, []);
+
   const handleMotionEvent = useCallback((event: DeviceMotionEvent) => {
     const { accelerationIncludingGravity } = event;
     if (!accelerationIncludingGravity) return;
@@ -63,57 +72,88 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     if (y > STEP_DETECTION_THRESHOLD && now - lastStepTime.current > STEP_COOLDOWN_MS) {
       lastStepTime.current = now;
       stepTimestamps.current.push(now);
-      
-      const oneMinuteAgo = now - 60000;
-      stepTimestamps.current = stepTimestamps.current.filter(ts => ts > oneMinuteAgo);
-      
-      const recentSteps = stepTimestamps.current.filter(ts => ts > now - 5000);
-      if (recentSteps.length > 1) {
-        const durationSeconds = (now - recentSteps[0]) / 1000;
-        const newCadence = Math.round((recentSteps.length / durationSeconds) * 60);
-        setCadence(newCadence);
-      }
+      calculateCadence();
     }
-  }, []);
+  }, [calculateCadence]);
 
-  const startDynamicAdjustment = useCallback(() => {
-    if (adjustmentInterval.current) clearInterval(adjustmentInterval.current);
-    if (!settings.adjust || settings.adjustDuration <= 0) {
-      setCurrentTargetCadence((settings.min + settings.max) / 2);
-      return;
-    };
+  const simulateStep = useCallback(() => {
+    const now = Date.now();
+    if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
+        lastStepTime.current = now;
+        stepTimestamps.current.push(now);
+        calculateCadence();
+    }
+  }, [calculateCadence]);
 
-    const initialTarget = (settings.min + settings.max) / 2;
-    const finalTarget = initialTarget * (1 + settings.adjustRate / 100);
-    const totalChange = finalTarget - initialTarget;
-    const updatesPerSecond = 1;
-    const totalUpdates = settings.adjustDuration * 60 * updatesPerSecond;
-    const changePerUpdate = totalChange / totalUpdates;
-    
-    let currentTarget = initialTarget;
-    setCurrentTargetCadence(currentTarget);
-
-    adjustmentInterval.current = setInterval(() => {
-      currentTarget += changePerUpdate;
-      if ((changePerUpdate > 0 && currentTarget >= finalTarget) || (changePerUpdate < 0 && currentTarget <= finalTarget)) {
-        currentTarget = finalTarget;
-        if (adjustmentInterval.current) clearInterval(adjustmentInterval.current);
-      }
-      setCurrentTargetCadence(currentTarget);
-    }, 1000 / updatesPerSecond);
-
-  }, [settings]);
 
   useEffect(() => {
+    const clearAdjustment = () => {
+      if (adjustmentTimeout.current) {
+        clearTimeout(adjustmentTimeout.current);
+        adjustmentTimeout.current = null;
+      }
+    };
+
+    const schedule = (callback: () => void, delaySeconds: number) => {
+      clearAdjustment();
+      if (delaySeconds > 0) {
+        adjustmentTimeout.current = setTimeout(callback, delaySeconds * 1000);
+      }
+    };
+
+    let adjustmentState: 'holding-low' | 'increasing' | 'holding-high' | 'decreasing' = 'holding-low';
+
+    const tick = () => {
+        switch (adjustmentState) {
+            case 'holding-low':
+                adjustmentState = 'increasing';
+                schedule(tick, settings.holdLowDuration);
+                break;
+            case 'increasing':
+                setCurrentTargetCadence(prev => {
+                    const nextTarget = prev + settings.adjustUpRate;
+                    if (nextTarget >= settings.max) {
+                        adjustmentState = 'holding-high';
+                        schedule(tick, settings.holdHighDuration);
+                        return settings.max;
+                    } else {
+                        schedule(tick, settings.adjustUpInterval);
+                        return nextTarget;
+                    }
+                });
+                break;
+            case 'holding-high':
+                adjustmentState = 'decreasing';
+                schedule(tick, settings.holdHighDuration);
+                break;
+            case 'decreasing':
+                setCurrentTargetCadence(prev => {
+                    const nextTarget = prev - settings.adjustDownRate;
+                    if (nextTarget <= settings.min) {
+                        adjustmentState = 'holding-low';
+                        schedule(tick, settings.holdLowDuration);
+                        return settings.min;
+                    } else {
+                        schedule(tick, settings.adjustDownInterval);
+                        return nextTarget;
+                    }
+                });
+                break;
+        }
+    };
+
     if (status === 'running' && permission === 'granted') {
       window.addEventListener('devicemotion', handleMotionEvent);
       Tone.start();
+      if (!synth.current) synth.current = new Tone.Synth().toDestination();
 
-      if (!synth.current) {
-        synth.current = new Tone.Synth().toDestination();
+      if (settings.adjust) {
+        adjustmentState = 'holding-low';
+        setCurrentTargetCadence(settings.min);
+        schedule(tick, 0.1); 
+      } else {
+        setCurrentTargetCadence((settings.min + settings.max) / 2);
       }
-      
-      startDynamicAdjustment();
       
       metronomeLoop.current = new Tone.Loop(time => {
         const inZone = cadence >= settings.min && cadence <= settings.max;
@@ -124,18 +164,19 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     } else {
       window.removeEventListener('devicemotion', handleMotionEvent);
       Tone.Transport.pause();
+      clearAdjustment();
       if (metronomeLoop.current) {
         metronomeLoop.current.stop(0).dispose();
         metronomeLoop.current = null;
       }
-      if (adjustmentInterval.current) {
-        clearInterval(adjustmentInterval.current);
-        adjustmentInterval.current = null;
-      }
       if (status === 'idle') {
         stepTimestamps.current = [];
         setCadence(0);
-        setCurrentTargetCadence((settings.min + settings.max) / 2);
+        setCurrentTargetCadence(settings.min);
+        if (synth.current) {
+          synth.current.dispose();
+          synth.current = null;
+        }
       }
     }
     
@@ -144,15 +185,13 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       if (metronomeLoop.current) {
         metronomeLoop.current.stop(0).dispose();
       }
-      if (adjustmentInterval.current) {
-        clearInterval(adjustmentInterval.current);
-      }
+      clearAdjustment();
       if (status === 'idle' && synth.current) {
         synth.current.dispose();
         synth.current = null;
       }
     };
-  }, [status, permission, settings, handleMotionEvent, startDynamicAdjustment]);
+  }, [status, permission, settings, handleMotionEvent]);
 
   useEffect(() => {
     if (status === 'running' && metronomeLoop.current) {
@@ -160,5 +199,5 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     }
   }, [currentTargetCadence, status]);
 
-  return { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps: stepTimestamps.current.length };
+  return { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps: stepTimestamps.current.length, simulateStep };
 }
