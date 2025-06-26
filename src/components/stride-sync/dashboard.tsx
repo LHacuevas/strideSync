@@ -79,6 +79,14 @@ export default function StrideSyncDashboard() {
         console.error('Failed to parse settings from localStorage', error);
       }
     }
+
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then(registration => console.log('Service Worker registered with scope:', registration.scope))
+        .catch(error => console.error('Service Worker registration failed:', error));
+    }
+
   }, []); // Empty dependency array ensures this runs only once on mount
 
   // Save settings to localStorage whenever they change
@@ -88,7 +96,7 @@ export default function StrideSyncDashboard() {
 
   useEffect(() => {
     // This will only run on the client, after hydration
-    setBuildVersion('v1.0.3');
+    setBuildVersion('v1.0.4');
   }, []);
 
 

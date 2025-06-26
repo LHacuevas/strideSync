@@ -7,8 +7,7 @@ export const metadata: Metadata = {
   description: 'Your personal running cadence coach',
   manifest: '/manifest.json',
   icons: {
-    icon: '/favicon.ico',
-    apple: '/favicon.ico',
+    apple: "/icon-192.svg",
   },
 };
 
@@ -26,7 +25,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="StrideSync" />
         <meta name="format-detection" content="telephone=no" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#42A5F5" />
+        <meta name="theme-color" content="#1e3a8a" />
 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
