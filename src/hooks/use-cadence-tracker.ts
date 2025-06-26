@@ -225,8 +225,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
           try {
             wakeLock.current = await navigator.wakeLock.request('screen');
           } catch (err: any) {
-            // This can fail on desktop or if permissions are not granted, which is fine.
-            // We'll just skip the console log to avoid clutter.
+            console.log(`Could not acquire screen wake lock: ${err.name}. This is expected on some platforms and does not prevent the app from working.`);
           }
         }
       };
