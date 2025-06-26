@@ -1,0 +1,17 @@
+{
+  "name": "StrideSync",
+  "short_name": "StrideSync",
+  "description": "Your personal running cadence coach",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#2079c7",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
