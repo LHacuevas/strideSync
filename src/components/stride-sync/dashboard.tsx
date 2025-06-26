@@ -53,6 +53,7 @@ export default function StrideSyncDashboard() {
   const [summary, setSummary] = useState<SummaryData>(initialSummary);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
   const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [buildVersion, setBuildVersion] = useState('');
 
   const { toast } = useToast();
   const { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps, simulateStep } = useCadenceTracker({ settings, status });
@@ -84,6 +85,11 @@ export default function StrideSyncDashboard() {
   useEffect(() => {
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    // This will only run on the client, after hydration
+    setBuildVersion('v1.0.3');
+  }, []);
 
 
   useEffect(() => {
@@ -253,7 +259,9 @@ export default function StrideSyncDashboard() {
           />
         </CardFooter>
       )}
-       <CardFooter className="py-3 justify-center border-t" />
+       <CardFooter className="py-3 justify-center border-t">
+        {buildVersion && <p className="text-xs text-muted-foreground">{buildVersion}</p>}
+       </CardFooter>
     </Card>
   );
 }
