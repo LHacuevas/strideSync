@@ -24,10 +24,16 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const lastStepTime = useRef(0);
   const stepTimestamps = useRef<number[]>([]);
   
-  const synth = useRef<Tone.Synth | null>(null);
-  const metronomeLoop = useRef<Tone.Loop | null>(null);
+  // Use a set of synths for different zone feedback
+  const synths = useRef<{
+    inZone: Tone.Synth | null;
+    belowZone: Tone.MembraneSynth | null;
+    aboveZone: Tone.Synth | null;
+  }>({ inZone: null, belowZone: null, aboveZone: null });
+
+  const zoneRef = useRef<'in' | 'below' | 'above'>('in');
   const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
-  const noteRef = useRef('C5'); // For metronome tone
+  const metronomeLoop = useRef<Tone.Loop | null>(null);
   
   const wakeLock = useRef<any>(null); // WakeLockSentinel
   const lowPassFilter = useRef([0, 0, 0]);
@@ -37,32 +43,25 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && localStorage.getItem('strideSyncPermissionGranted') === 'true') {
-      setPermission('granted');
+      // Defer setting permission to avoid hydration mismatch
+      setTimeout(() => setPermission('granted'), 0);
     }
   }, []);
 
-  const speakText = useCallback((text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
-        window.speechSynthesis.speak(utterance);
-    } else {
-        console.error("Browser does not support Speech Synthesis.");
-    }
-  }, []);
-
+  // Determine which sound to play based on cadence vs target
   useEffect(() => {
-    let note = 'C5'; // In-zone / Default
+    let currentZone: 'in' | 'below' | 'above' = 'in';
     const zoneMargin = 3;
-    if (status === 'running' && cadence > 0 && currentTargetCadence > 0) {
+    if (status === 'running' && cadence >= 140 && currentTargetCadence > 0) {
       if (cadence < currentTargetCadence - zoneMargin) {
-        note = 'G4'; // Below zone
+        currentZone = 'below';
       } else if (cadence > currentTargetCadence + zoneMargin) {
-        note = 'E5'; // Above zone
+        currentZone = 'above';
       }
     }
-    noteRef.current = note;
+    zoneRef.current = currentZone;
   }, [cadence, currentTargetCadence, status]);
+
 
   const requestPermission = useCallback(async () => {
     const requestMotionPermission = async () => {
@@ -73,6 +72,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     };
     
     try {
+      await Tone.start();
       const motionState = await requestMotionPermission();
 
       if (motionState === 'granted') {
@@ -83,7 +83,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         setError('Motion access denied. You may need to grant it in your browser\'s settings.');
       }
     } catch (err) {
-      setError('Error requesting motion permission.');
+      setError('Error requesting permissions.');
       console.error(err);
     }
   }, []);
@@ -151,6 +151,16 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     return () => clearInterval(interval);
   }, [status, calculateCadence]);
 
+  const speakText = useCallback((text: string) => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        window.speechSynthesis.speak(utterance);
+    } else {
+        console.error("Browser does not support Speech Synthesis.");
+    }
+  }, []);
+
 
   useEffect(() => {
     const clearAdjustment = () => {
@@ -217,7 +227,6 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         if ('wakeLock' in navigator) {
           try {
             wakeLock.current = await navigator.wakeLock.request('screen');
-            console.log('Screen Wake Lock is active.');
           } catch (err: any) {
             // This can fail on desktop or if permissions are not granted, which is fine.
             // We'll just skip the console log to avoid clutter.
@@ -227,8 +236,12 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       acquireLock();
 
       window.addEventListener('devicemotion', handleMotionEvent, true);
-      Tone.start();
-      if (!synth.current) synth.current = new Tone.Synth().toDestination();
+      
+      if (!synths.current.inZone) {
+        synths.current.inZone = new Tone.Synth().toDestination();
+        synths.current.belowZone = new Tone.MembraneSynth({ pitchDecay: 0.1, octaves: 2 }).toDestination();
+        synths.current.aboveZone = new Tone.Synth({ oscillator: { type: 'triangle' } }).toDestination();
+      }
 
       if (settings.adjust) {
         adjustmentState = 'holding-low';
@@ -244,7 +257,19 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
 
       metronomeLoop.current = new Tone.Loop(time => {
         if (cadenceRef.current >= 140) {
-            synth.current?.triggerAttackRelease(noteRef.current, '8n', time);
+            const { inZone, belowZone, aboveZone } = synths.current;
+            switch (zoneRef.current) {
+                case 'below':
+                    belowZone?.triggerAttackRelease('C1', '8n', time); // Low drum-like sound
+                    break;
+                case 'above':
+                    aboveZone?.triggerAttackRelease('A5', '8n', time); // High pitched, distinct sound
+                    break;
+                case 'in':
+                default:
+                    inZone?.triggerAttackRelease('C5', '8n', time); // Neutral click
+                    break;
+            }
         }
       }, `${initialInterval}s`).start(0);
 
@@ -270,9 +295,13 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         setCadence(0);
         setTotalSteps(0);
         setCurrentTargetCadence(settings.min);
-        if (synth.current) {
-          synth.current.dispose();
-          synth.current = null;
+        if (synths.current.inZone) {
+          synths.current.inZone.dispose();
+          synths.current.belowZone?.dispose();
+          synths.current.aboveZone?.dispose();
+          synths.current.inZone = null;
+          synths.current.belowZone = null;
+          synths.current.aboveZone = null;
         }
       }
     }
@@ -290,9 +319,13 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         }
       };
       releaseLock();
-      if (status === 'idle' && synth.current) {
-        synth.current.dispose();
-        synth.current = null;
+      if (status === 'idle' && synths.current.inZone) {
+          synths.current.inZone.dispose();
+          synths.current.belowZone?.dispose();
+          synths.current.aboveZone?.dispose();
+          synths.current.inZone = null;
+          synths.current.belowZone = null;
+          synths.current.aboveZone = null;
       }
     };
   }, [status, permission, settings, handleMotionEvent, speakText, calculateCadence]);
