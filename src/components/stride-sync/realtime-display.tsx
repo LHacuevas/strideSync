@@ -14,17 +14,30 @@ interface RealtimeDisplayProps {
 }
 
 export default function RealtimeDisplay({ cadence, targetCadence, range, status, isDynamic }: RealtimeDisplayProps) {
-  const zoneMargin = 3;
-  const inZone = status === 'running' && Math.abs(cadence - targetCadence) <= zoneMargin;
   const isIdle = status === 'idle';
+  const isRunning = status === 'running' && cadence >= 140;
 
-  const progress = isIdle ? 50 : Math.max(0, Math.min(100, ((cadence - range.min) / (range.max - range.min)) * 100));
+  const progress = isIdle || !isRunning
+    ? 50
+    : Math.max(0, Math.min(100, ((cadence - range.min) / (range.max - range.min)) * 100));
 
-  const colorClass = isIdle
-    ? "text-muted-foreground"
-    : inZone
-    ? "text-primary"
-    : "text-accent";
+  let colorClass = "text-muted-foreground";
+  let progressColorClass = "[&>div]:bg-accent";
+  let pulseClass = "";
+
+  if (isRunning) {
+    if (cadence < range.min) {
+      colorClass = "text-primary"; // Blue for below
+      progressColorClass = "[&>div]:bg-primary";
+    } else if (cadence > range.max) {
+      colorClass = "text-destructive"; // Red for above
+      progressColorClass = "[&>div]:bg-destructive";
+    } else {
+      colorClass = "text-chart-2"; // Green for in-zone
+      progressColorClass = "[&>div]:bg-chart-2";
+      pulseClass = "bg-chart-2/20";
+    }
+  }
 
   return (
     <div className="flex flex-col items-center gap-4 text-center">
@@ -38,8 +51,8 @@ export default function RealtimeDisplay({ cadence, targetCadence, range, status,
           {isIdle ? '...' : cadence}
         </div>
         <div className="absolute -bottom-2 w-full text-center text-lg font-medium text-muted-foreground">SPM</div>
-        {inZone && status === 'running' && (
-          <div className="absolute inset-0 -z-10 bg-primary/20 rounded-full animate-pulse blur-2xl"></div>
+        {pulseClass && (
+          <div className={cn("absolute inset-0 -z-10 rounded-full animate-pulse blur-2xl", pulseClass)}></div>
         )}
       </div>
 
@@ -48,7 +61,7 @@ export default function RealtimeDisplay({ cadence, targetCadence, range, status,
             <Target className="w-4 h-4" />
             <span>Target: {Math.round(targetCadence)} SPM {isDynamic && `(${range.min}-${range.max})`}</span>
          </div>
-        <Progress value={progress} className={cn("h-3 transition-all", inZone && status !== 'idle' ? "[&>div]:bg-primary" : "[&>div]:bg-accent")} />
+        <Progress value={progress} className={cn("h-3 transition-all", progressColorClass)} />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>{range.min}</span>
           <span>{range.max}</span>
