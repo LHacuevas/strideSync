@@ -31,8 +31,9 @@ const initialSummary: SummaryData = {
     chartData: [],
 };
 
-export default function StrideSyncDashboard() {
-  const [settings, setSettings] = useState<CadenceSettings>({
+const SETTINGS_STORAGE_KEY = 'strideSyncSettings';
+
+const defaultSettings: CadenceSettings = {
     min: 160,
     max: 175,
     adjust: false,
@@ -44,7 +45,10 @@ export default function StrideSyncDashboard() {
     adjustDownInterval: 10,
     announcementInterval: 0,
     beatFrequency: 'step',
-  });
+};
+
+export default function StrideSyncDashboard() {
+  const [settings, setSettings] = useState<CadenceSettings>(defaultSettings);
   const [status, setStatus] = useState<SessionStatus>('idle');
   const [summary, setSummary] = useState<SummaryData>(initialSummary);
   const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
@@ -61,6 +65,26 @@ export default function StrideSyncDashboard() {
   useEffect(() => {
     stateRef.current = { cadence, totalSteps, currentTargetCadence, summary };
   }, [cadence, totalSteps, currentTargetCadence, summary]);
+
+  // Load settings from localStorage on initial render
+  useEffect(() => {
+    const storedSettings = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (storedSettings) {
+      try {
+        const parsedSettings = JSON.parse(storedSettings);
+        // Merge with default settings to ensure all keys are present for forward compatibility
+        setSettings({ ...defaultSettings, ...parsedSettings });
+      } catch (error) {
+        console.error('Failed to parse settings from localStorage', error);
+      }
+    }
+  }, []); // Empty dependency array ensures this runs only once on mount
+
+  // Save settings to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  }, [settings]);
+
 
   useEffect(() => {
     if (error) {
@@ -104,7 +128,11 @@ export default function StrideSyncDashboard() {
         const duration = (Date.now() - sessionStartTime) / 1000;
         const isCadenceValid = currentCadence > 0 && currentCadence >= 140;
 
-        liveChartData.current.push({ time: duration, actual: isCadenceValid ? currentCadence : null, target: currentTarget });
+        if (isCadenceValid) {
+          liveChartData.current.push({ time: duration, actual: currentCadence, target: currentTarget });
+        } else {
+          liveChartData.current.push({ time: duration, actual: null, target: currentTarget });
+        }
 
         setSummary(prevSummary => {
             let { inZoneTime, belowZoneTime, aboveZoneTime } = prevSummary;
@@ -115,10 +143,9 @@ export default function StrideSyncDashboard() {
                     liveTargetCadenceHistory.current.push(currentTarget);
                 }
 
-                const zoneMargin = 3;
-                if (currentCadence < currentTarget - zoneMargin) {
+                if (currentCadence < settings.min) {
                     belowZoneTime += 1;
-                } else if (currentCadence > currentTarget + zoneMargin) {
+                } else if (currentCadence > settings.max) {
                     aboveZoneTime += 1;
                 } else {
                     inZoneTime += 1;
@@ -143,7 +170,7 @@ export default function StrideSyncDashboard() {
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [status, sessionStartTime]);
+  }, [status, sessionStartTime, settings.min, settings.max]);
 
   const handleStatusChange = (newStatus: SessionStatus) => {
     if (newStatus === 'running' && status !== 'running') {
