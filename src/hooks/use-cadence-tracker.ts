@@ -29,6 +29,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
   const noteRef = useRef('C5'); // For metronome tone
   const lastMagnitude = useRef(0);
+  const wakeLock = useRef<any>(null); // WakeLockSentinel
 
   const cadenceRef = useRef(0);
   useEffect(() => { cadenceRef.current = cadence; }, [cadence]);
@@ -57,7 +58,6 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   }, [cadence, currentTargetCadence, status]);
 
   const requestPermission = useCallback(async () => {
-    // Standard permission request for DeviceMotion and DeviceOrientation which is required on iOS 13+
     const requestMotionPermission = async () => {
       if (typeof (DeviceMotionEvent as any).requestPermission === 'function') {
         return await (DeviceMotionEvent as any).requestPermission();
@@ -73,7 +73,6 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     };
 
     try {
-      // Requesting both seems to be more reliable in triggering the prompt.
       const [motionState, orientationState] = await Promise.all([
           requestMotionPermission(),
           requestOrientationPermission()
@@ -109,14 +108,12 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const handleMotionEvent = useCallback((event: DeviceMotionEvent) => {
     if (status !== 'running') return;
 
-    // Use accelerationIncludingGravity for more consistent data across devices.
     const acc = event.accelerationIncludingGravity;
 
     if (acc && acc.x != null && acc.y != null && acc.z != null) {
       const magnitude = Math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2);
       const now = Date.now();
 
-      // Detect a step when magnitude spikes above the threshold from a lower value.
       if (magnitude > STEP_DETECTION_THRESHOLD && lastMagnitude.current <= STEP_DETECTION_THRESHOLD) {
           if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
             lastStepTime.current = now;
@@ -129,13 +126,14 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   }, [status]);
 
   const simulateStep = useCallback(() => {
+    if (status !== 'running') return;
     const now = Date.now();
     if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
         lastStepTime.current = now;
         stepTimestamps.current.push(now);
         setTotalSteps(s => s + 1);
     }
-  }, []);
+  }, [status]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -209,9 +207,19 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     };
 
     if (status === 'running' && permission === 'granted') {
-      // Add a listener for device motion events. 'true' for capture phase.
+      const acquireLock = async () => {
+        if ('wakeLock' in navigator) {
+          try {
+            wakeLock.current = await navigator.wakeLock.request('screen');
+            console.log('Screen Wake Lock is active.');
+          } catch (err: any) {
+            console.error(`Failed to acquire wake lock: ${err.name}, ${err.message}`);
+          }
+        }
+      };
+      acquireLock();
+
       window.addEventListener('devicemotion', handleMotionEvent, true);
-      // Ensure the audio context is running
       Tone.start();
       if (!synth.current) synth.current = new Tone.Synth().toDestination();
 
@@ -224,7 +232,6 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       }
       
       const beatMultiplier = settings.beatFrequency === 'cycle' ? 2 : 1;
-      // Use the initial target cadence for the loop setup. It will be updated by the other effect.
       const initialTarget = settings.adjust ? settings.min : (settings.min + settings.max) / 2;
       const initialInterval = initialTarget > 0 ? (60 / initialTarget) * beatMultiplier : 1;
 
@@ -236,6 +243,14 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
 
       Tone.Transport.start();
     } else {
+      const releaseLock = async () => {
+        if (wakeLock.current) {
+          await wakeLock.current.release();
+          wakeLock.current = null;
+        }
+      };
+      releaseLock();
+      
       window.removeEventListener('devicemotion', handleMotionEvent, true);
       Tone.Transport.pause();
       clearAdjustment();
@@ -261,6 +276,13 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         metronomeLoop.current.stop(0).dispose();
       }
       clearAdjustment();
+      const releaseLock = async () => {
+        if (wakeLock.current) {
+          await wakeLock.current.release();
+          wakeLock.current = null;
+        }
+      };
+      releaseLock();
       if (status === 'idle' && synth.current) {
         synth.current.dispose();
         synth.current = null;
