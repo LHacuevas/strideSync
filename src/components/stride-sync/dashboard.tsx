@@ -57,6 +57,12 @@ export default function StrideSyncDashboard() {
   const liveTargetCadenceHistory = useRef<number[]>([]);
   const liveChartData = useRef<ChartDataPoint[]>([]);
 
+  // Use refs to hold the latest state values for use inside the stable setInterval
+  const stateRef = useRef({ cadence, totalSteps, currentTargetCadence });
+  useEffect(() => {
+    stateRef.current = { cadence, totalSteps, currentTargetCadence };
+  }, [cadence, totalSteps, currentTargetCadence]);
+
   useEffect(() => {
     if (error) {
       toast({
@@ -96,43 +102,50 @@ export default function StrideSyncDashboard() {
     let interval: NodeJS.Timeout | undefined;
     if (status === 'running' && sessionStartTime) {
       interval = setInterval(() => {
+        const { cadence: currentCadence, totalSteps: currentTotalSteps, currentTargetCadence: currentTarget } = stateRef.current;
         const duration = (Date.now() - sessionStartTime) / 1000;
-        
-        if (cadence > 0) liveCadenceHistory.current.push(cadence);
-        if (currentTargetCadence > 0) liveTargetCadenceHistory.current.push(currentTargetCadence);
-        liveChartData.current.push({ time: duration, actual: cadence > 0 ? cadence : null, target: currentTargetCadence });
+        const isCadenceValid = currentCadence > 0 && currentCadence >= 140;
 
-        const zoneMargin = 3;
-        let { inZoneTime, belowZoneTime, aboveZoneTime } = summary;
+        liveChartData.current.push({ time: duration, actual: isCadenceValid ? currentCadence : null, target: currentTarget });
 
-        if (cadence > 0 && currentTargetCadence > 0) {
-          if (cadence < currentTargetCadence - zoneMargin) {
-            belowZoneTime += 1;
-          } else if (cadence > currentTargetCadence + zoneMargin) {
-            aboveZoneTime += 1;
-          } else {
-            inZoneTime += 1;
-          }
-        }
-        
-        const avgCadence = liveCadenceHistory.current.length ? liveCadenceHistory.current.reduce((a, b) => a + b, 0) / liveCadenceHistory.current.length : 0;
-        const avgTargetCadence = liveTargetCadenceHistory.current.length ? liveTargetCadenceHistory.current.reduce((a, b) => a + b, 0) / liveTargetCadenceHistory.current.length : 0;
+        setSummary(prevSummary => {
+            let { inZoneTime, belowZoneTime, aboveZoneTime } = prevSummary;
+            
+            if (isCadenceValid) {
+                liveCadenceHistory.current.push(currentCadence);
+                if (currentTarget > 0) {
+                    liveTargetCadenceHistory.current.push(currentTarget);
+                }
 
-        setSummary({
-          sessionDuration: duration,
-          totalSteps,
-          avgCadence,
-          avgTargetCadence: Math.round(avgTargetCadence),
-          inZoneTime,
-          belowZoneTime,
-          aboveZoneTime,
-          chartData: [...liveChartData.current],
+                const zoneMargin = 3;
+                if (currentCadence < currentTarget - zoneMargin) {
+                    belowZoneTime += 1;
+                } else if (currentCadence > currentTarget + zoneMargin) {
+                    aboveZoneTime += 1;
+                } else {
+                    inZoneTime += 1;
+                }
+            }
+            
+            const avgCadence = liveCadenceHistory.current.length > 0 ? liveCadenceHistory.current.reduce((a, b) => a + b, 0) / liveCadenceHistory.current.length : 0;
+            const avgTargetCadence = liveTargetCadenceHistory.current.length > 0 ? liveTargetCadenceHistory.current.reduce((a, b) => a + b, 0) / liveTargetCadenceHistory.current.length : 0;
+
+            return {
+              sessionDuration: duration,
+              totalSteps: currentTotalSteps,
+              avgCadence,
+              avgTargetCadence: Math.round(avgTargetCadence),
+              inZoneTime,
+              belowZoneTime,
+              aboveZoneTime,
+              chartData: [...liveChartData.current],
+            };
         });
 
       }, 1000);
     }
     return () => clearInterval(interval);
-  }, [status, sessionStartTime, cadence, totalSteps, currentTargetCadence, summary]);
+  }, [status, sessionStartTime]);
 
   const handleStatusChange = (newStatus: SessionStatus) => {
     if (newStatus === 'running' && status !== 'running') {
@@ -167,8 +180,8 @@ export default function StrideSyncDashboard() {
     <Card className="w-full max-w-lg mx-auto shadow-2xl bg-card/80 backdrop-blur-sm border-primary/20">
       <CardHeader className="text-center">
         <div className="flex justify-center items-center gap-2 mb-2">
-          <Footprints className="w-7 h-7 text-primary" />
-          <CardTitle className="text-3xl font-bold font-headline tracking-tighter">StrideSync</CardTitle>
+          <Footprints className="w-6 h-6 text-primary" />
+          <CardTitle className="text-2xl font-bold font-headline tracking-tighter">StrideSync</CardTitle>
         </div>
         <CardDescription>Your personal running cadence coach</CardDescription>
       </CardHeader>

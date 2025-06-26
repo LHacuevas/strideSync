@@ -17,6 +17,7 @@ const STEP_COOLDOWN_MS = 200; // Corresponds to a max of 300 SPM
 export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const [permission, setPermission] = useState<PermissionState>('prompt');
   const [cadence, setCadence] = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [currentTargetCadence, setCurrentTargetCadence] = useState(settings.min);
   
@@ -28,6 +29,9 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
   const noteRef = useRef('C5'); // For metronome tone
   const lastMagnitude = useRef(0);
+
+  const cadenceRef = useRef(0);
+  useEffect(() => { cadenceRef.current = cadence; }, [cadence]);
 
   const speakText = useCallback((text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -117,6 +121,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
           if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
             lastStepTime.current = now;
             stepTimestamps.current.push(now);
+            setTotalSteps(s => s + 1);
           }
       }
       lastMagnitude.current = magnitude;
@@ -128,6 +133,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
         lastStepTime.current = now;
         stepTimestamps.current.push(now);
+        setTotalSteps(s => s + 1);
     }
   }, []);
 
@@ -223,7 +229,9 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       const initialInterval = initialTarget > 0 ? (60 / initialTarget) * beatMultiplier : 1;
 
       metronomeLoop.current = new Tone.Loop(time => {
-        synth.current?.triggerAttackRelease(noteRef.current, '8n', time);
+        if (cadenceRef.current >= 140) {
+            synth.current?.triggerAttackRelease(noteRef.current, '8n', time);
+        }
       }, `${initialInterval}s`).start(0);
 
       Tone.Transport.start();
@@ -238,6 +246,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       if (status === 'idle') {
         stepTimestamps.current = [];
         setCadence(0);
+        setTotalSteps(0);
         setCurrentTargetCadence(settings.min);
         if (synth.current) {
           synth.current.dispose();
@@ -266,5 +275,5 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     }
   }, [currentTargetCadence, status, settings.beatFrequency]);
 
-  return { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps: stepTimestamps.current.length, simulateStep };
+  return { cadence, permission, error, requestPermission, currentTargetCadence, totalSteps, simulateStep };
 }

@@ -74,7 +74,7 @@ export default function SessionSummaryChart({ data, summary }: SessionSummaryCha
                                 content={<ChartTooltipContent indicator="line" />}
                             />
                             <ChartLegend content={<ChartLegendContent />} />
-                            <Line type="monotone" dataKey="actual" stroke="var(--color-actual)" strokeWidth={2} dot={false} name="Actual" connectNulls />
+                            <Line type="monotone" dataKey="actual" stroke="var(--color-actual)" strokeWidth={2} dot={false} name="Actual" connectNulls={false} />
                             <Line type="monotone" dataKey="target" stroke="var(--color-target)" strokeDasharray="5 5" strokeWidth={2} dot={false} name="Target" />
                         </LineChart>
                     </ChartContainer>
