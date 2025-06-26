@@ -47,6 +47,23 @@ const defaultSettings: CadenceSettings = {
     beatFrequency: 'step',
 };
 
+// This component ensures the build timestamp is only rendered on the client,
+// preventing a hydration mismatch error.
+const BuildInfo = () => {
+  const [isClient, setIsClient] = useState(false);
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    return null;
+  }
+
+  return (
+    <p className="text-xs text-muted-foreground">Build: 2024-07-26 18:00</p>
+  );
+}
+
 export default function StrideSyncDashboard() {
   const [settings, setSettings] = useState<CadenceSettings>(defaultSettings);
   const [status, setStatus] = useState<SessionStatus>('idle');
@@ -254,7 +271,7 @@ export default function StrideSyncDashboard() {
         </CardFooter>
       )}
        <CardFooter className="py-3 justify-center border-t">
-        <p className="text-xs text-muted-foreground">Build: 2024-07-26 18:00</p>
+        <BuildInfo />
       </CardFooter>
     </Card>
   );
