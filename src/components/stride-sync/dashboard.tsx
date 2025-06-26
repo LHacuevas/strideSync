@@ -11,7 +11,7 @@ import RealtimeDisplay from './realtime-display';
 import SessionControls from './session-controls';
 import SummaryDisplay from './summary-display';
 import CurrentSettingsDisplay from './current-settings-display';
-import { Footprints, AlertTriangle, StepForward } from 'lucide-react';
+import { Footprints, AlertTriangle } from 'lucide-react';
 
 const PRESETS: Preset[] = [
     { name: 'Steady Run', settings: { min: 170, max: 180, adjust: false, announcementInterval: 0, beatFrequency: 'step' } },
@@ -57,7 +57,6 @@ export default function StrideSyncDashboard() {
   const liveTargetCadenceHistory = useRef<number[]>([]);
   const liveChartData = useRef<ChartDataPoint[]>([]);
 
-  // Use refs to hold the latest state values for use inside the stable setInterval
   const stateRef = useRef({ cadence, totalSteps, currentTargetCadence });
   useEffect(() => {
     stateRef.current = { cadence, totalSteps, currentTargetCadence };
@@ -73,7 +72,6 @@ export default function StrideSyncDashboard() {
     }
   }, [error, toast]);
   
-
   useEffect(() => {
     if (status !== 'running' || !settings.announcementInterval || settings.announcementInterval === 0) {
       return;
@@ -181,7 +179,7 @@ export default function StrideSyncDashboard() {
       <CardHeader className="text-center">
         <div className="flex justify-center items-center gap-2 mb-2">
           <Footprints className="w-6 h-6 text-primary" />
-          <CardTitle className="text-2xl font-bold font-headline tracking-tighter">StrideSync</CardTitle>
+          <CardTitle className="text-xl font-bold font-headline tracking-tighter">StrideSync</CardTitle>
         </div>
         <CardDescription>Your personal running cadence coach</CardDescription>
       </CardHeader>
@@ -196,13 +194,11 @@ export default function StrideSyncDashboard() {
               isDynamic={settings.adjust}
             />
             <SummaryDisplay summary={summary} status={status} />
-            <SessionControls status={status} onStatusChange={handleStatusChange} />
-             <div className="flex items-center justify-center gap-4 mt-2">
-                <Button onClick={simulateStep} variant="outline" size="sm" disabled={status !== 'running'}>
-                    <StepForward className="mr-2 h-4 w-4" />
-                    Simulate Step
-                </Button>
-            </div>
+            <SessionControls 
+              status={status} 
+              onStatusChange={handleStatusChange} 
+              onSimulateStep={simulateStep}
+            />
             <CurrentSettingsDisplay settings={settings} activePreset={activePreset} />
           </>
         ) : (

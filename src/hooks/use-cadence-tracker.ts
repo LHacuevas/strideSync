@@ -11,7 +11,7 @@ interface CadenceTrackerProps {
   status: 'idle' | 'running' | 'paused';
 }
 
-const STEP_DETECTION_THRESHOLD = 15; // m/s^2, for accelerationIncludingGravity
+const STEP_DETECTION_THRESHOLD = 1.5; 
 const STEP_COOLDOWN_MS = 200; // Corresponds to a max of 300 SPM
 
 export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
@@ -28,8 +28,9 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const metronomeLoop = useRef<Tone.Loop | null>(null);
   const adjustmentTimeout = useRef<NodeJS.Timeout | null>(null);
   const noteRef = useRef('C5'); // For metronome tone
-  const lastMagnitude = useRef(0);
+  
   const wakeLock = useRef<any>(null); // WakeLockSentinel
+  const lowPassFilter = useRef([0, 0, 0]);
 
   const cadenceRef = useRef(0);
   useEffect(() => { cadenceRef.current = cadence; }, [cadence]);
@@ -65,20 +66,10 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
       return 'granted';
     };
     
-    const requestOrientationPermission = async () => {
-      if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
-        return await (DeviceOrientationEvent as any).requestPermission();
-      }
-      return 'granted';
-    };
-
     try {
-      const [motionState, orientationState] = await Promise.all([
-          requestMotionPermission(),
-          requestOrientationPermission()
-      ]);
+      const motionState = await requestMotionPermission();
 
-      if (motionState === 'granted' && orientationState === 'granted') {
+      if (motionState === 'granted') {
         setPermission('granted');
       } else {
         setPermission('denied');
@@ -106,24 +97,34 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   }, []);
   
   const handleMotionEvent = useCallback((event: DeviceMotionEvent) => {
-    if (status !== 'running') return;
+    if (status !== 'running' || !event.acceleration) return;
 
-    const acc = event.accelerationIncludingGravity;
-
+    const acc = event.acceleration;
     if (acc && acc.x != null && acc.y != null && acc.z != null) {
-      const magnitude = Math.sqrt(acc.x ** 2 + acc.y ** 2 + acc.z ** 2);
-      const now = Date.now();
+        const alpha = 0.8;
+        const [lx, ly, lz] = lowPassFilter.current;
 
-      if (magnitude > STEP_DETECTION_THRESHOLD && lastMagnitude.current <= STEP_DETECTION_THRESHOLD) {
-          if (now - lastStepTime.current > STEP_COOLDOWN_MS) {
+        const gravityX = alpha * lx + (1 - alpha) * acc.x;
+        const gravityY = alpha * ly + (1 - alpha) * acc.y;
+        const gravityZ = alpha * lz + (1 - alpha) * acc.z;
+
+        lowPassFilter.current = [gravityX, gravityY, gravityZ];
+
+        const linearAccelerationX = acc.x - gravityX;
+        const linearAccelerationY = acc.y - gravityY;
+        const linearAccelerationZ = acc.z - gravityZ;
+        
+        const magnitude = Math.sqrt(linearAccelerationX**2 + linearAccelerationY**2 + linearAccelerationZ**2);
+        
+        const now = Date.now();
+        if (magnitude > STEP_DETECTION_THRESHOLD && now - lastStepTime.current > STEP_COOLDOWN_MS) {
             lastStepTime.current = now;
             stepTimestamps.current.push(now);
             setTotalSteps(s => s + 1);
-          }
-      }
-      lastMagnitude.current = magnitude;
+        }
     }
   }, [status]);
+
 
   const simulateStep = useCallback(() => {
     if (status !== 'running') return;
@@ -139,8 +140,6 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
     let interval: NodeJS.Timeout | undefined;
     if (status === 'running') {
       interval = setInterval(calculateCadence, 1000);
-    } else {
-      lastMagnitude.current = 0;
     }
     return () => clearInterval(interval);
   }, [status, calculateCadence]);
@@ -213,7 +212,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
             wakeLock.current = await navigator.wakeLock.request('screen');
             console.log('Screen Wake Lock is active.');
           } catch (err: any) {
-            console.error(`Failed to acquire wake lock: ${err.name}, ${err.message}`);
+            console.log(`Could not acquire wake lock: ${err.name}, ${err.message}`);
           }
         }
       };
@@ -288,7 +287,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
         synth.current = null;
       }
     };
-  }, [status, permission, settings, handleMotionEvent, speakText]);
+  }, [status, permission, settings, handleMotionEvent, speakText, calculateCadence]);
 
   useEffect(() => {
     if (status === 'running' && metronomeLoop.current && currentTargetCadence > 0) {
