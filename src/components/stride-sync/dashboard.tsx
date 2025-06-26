@@ -57,10 +57,10 @@ export default function StrideSyncDashboard() {
   const liveTargetCadenceHistory = useRef<number[]>([]);
   const liveChartData = useRef<ChartDataPoint[]>([]);
 
-  const stateRef = useRef({ cadence, totalSteps, currentTargetCadence });
+  const stateRef = useRef({ cadence, totalSteps, currentTargetCadence, summary });
   useEffect(() => {
-    stateRef.current = { cadence, totalSteps, currentTargetCadence };
-  }, [cadence, totalSteps, currentTargetCadence]);
+    stateRef.current = { cadence, totalSteps, currentTargetCadence, summary };
+  }, [cadence, totalSteps, currentTargetCadence, summary]);
 
   useEffect(() => {
     if (error) {
@@ -78,7 +78,7 @@ export default function StrideSyncDashboard() {
     }
 
     const handleAnnouncement = () => {
-      const currentAvg = summary.avgCadence;
+      const currentAvg = stateRef.current.summary.avgCadence;
       if (currentAvg > 0) {
         if ('speechSynthesis' in window) {
             const textToSpeak = `Average cadence is ${Math.round(currentAvg)} steps per minute.`;
@@ -94,7 +94,7 @@ export default function StrideSyncDashboard() {
 
     const interval = setInterval(handleAnnouncement, settings.announcementInterval * 1000);
     return () => clearInterval(interval);
-  }, [status, settings.announcementInterval, summary.avgCadence, toast]);
+  }, [status, settings.announcementInterval, toast]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | undefined;
@@ -215,15 +215,17 @@ export default function StrideSyncDashboard() {
           </div>
         )}
       </CardContent>
-      <CardFooter>
-        <SettingsPanel
-          settings={settings}
-          setSettings={handleSettingsChange}
-          presets={PRESETS}
-          onSelectPreset={handleSelectPreset}
-          disabled={status !== 'idle'}
-        />
-      </CardFooter>
+      {status === 'idle' && (
+        <CardFooter>
+          <SettingsPanel
+            settings={settings}
+            setSettings={handleSettingsChange}
+            presets={PRESETS}
+            onSelectPreset={handleSelectPreset}
+            disabled={status !== 'idle'}
+          />
+        </CardFooter>
+      )}
     </Card>
   );
 }

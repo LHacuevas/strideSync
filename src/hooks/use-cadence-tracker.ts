@@ -35,6 +35,12 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const cadenceRef = useRef(0);
   useEffect(() => { cadenceRef.current = cadence; }, [cadence]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('strideSyncPermissionGranted') === 'true') {
+      setPermission('granted');
+    }
+  }, []);
+
   const speakText = useCallback((text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         const utterance = new SpeechSynthesisUtterance(text);
@@ -71,6 +77,7 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
 
       if (motionState === 'granted') {
         setPermission('granted');
+        localStorage.setItem('strideSyncPermissionGranted', 'true');
       } else {
         setPermission('denied');
         setError('Motion access denied. You may need to grant it in your browser\'s settings.');
@@ -212,7 +219,8 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
             wakeLock.current = await navigator.wakeLock.request('screen');
             console.log('Screen Wake Lock is active.');
           } catch (err: any) {
-            console.log(`Could not acquire wake lock: ${err.name}, ${err.message}`);
+            // This can fail on desktop or if permissions are not granted, which is fine.
+            // We'll just skip the console log to avoid clutter.
           }
         }
       };
