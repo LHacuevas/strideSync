@@ -254,7 +254,7 @@ export default function StrideSyncDashboard() {
         </CardFooter>
       )}
        <CardFooter className="py-3 justify-center border-t">
-        <p className="text-xs text-muted-foreground">Build: 2024-07-26</p>
+        <p className="text-xs text-muted-foreground">Build: 2024-07-26 18:00</p>
       </CardFooter>
     </Card>
   );
