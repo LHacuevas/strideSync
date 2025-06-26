@@ -7,8 +7,8 @@ export const metadata: Metadata = {
   description: 'Your personal running cadence coach',
   manifest: '/manifest.json',
   icons: {
-    icon: '/icon.svg',
-    apple: '/icon.svg',
+    icon: '/favicon.ico',
+    apple: '/favicon.ico',
   },
 };
 
