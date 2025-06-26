@@ -24,7 +24,6 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
   const lastStepTime = useRef(0);
   const stepTimestamps = useRef<number[]>([]);
   
-  // Use a set of synths for different zone feedback
   const synths = useRef<{
     inZone: Tone.Synth | null;
     belowZone: Tone.MembraneSynth | null;
@@ -43,24 +42,22 @@ export function useCadenceTracker({ settings, status }: CadenceTrackerProps) {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && localStorage.getItem('strideSyncPermissionGranted') === 'true') {
-      // Defer setting permission to avoid hydration mismatch
       setTimeout(() => setPermission('granted'), 0);
     }
   }, []);
 
-  // Determine which sound to play based on cadence vs target
+  // Determine which sound to play based on cadence vs target range
   useEffect(() => {
     let currentZone: 'in' | 'below' | 'above' = 'in';
-    const zoneMargin = 3;
-    if (status === 'running' && cadence >= 140 && currentTargetCadence > 0) {
-      if (cadence < currentTargetCadence - zoneMargin) {
+    if (status === 'running' && cadence >= 140) {
+      if (cadence < settings.min) {
         currentZone = 'below';
-      } else if (cadence > currentTargetCadence + zoneMargin) {
+      } else if (cadence > settings.max) {
         currentZone = 'above';
       }
     }
     zoneRef.current = currentZone;
-  }, [cadence, currentTargetCadence, status]);
+  }, [cadence, settings.min, settings.max, status]);
 
 
   const requestPermission = useCallback(async () => {
