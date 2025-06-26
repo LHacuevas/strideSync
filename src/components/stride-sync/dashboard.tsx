@@ -179,7 +179,7 @@ export default function StrideSyncDashboard() {
       <CardHeader className="text-center">
         <div className="flex justify-center items-center gap-2 mb-2">
           <Footprints className="w-6 h-6 text-primary" />
-          <CardTitle className="text-xl font-bold font-headline tracking-tighter">StrideSync</CardTitle>
+          <CardTitle className="font-bold font-headline tracking-tighter">StrideSync</CardTitle>
         </div>
         <CardDescription>Your personal running cadence coach</CardDescription>
       </CardHeader>
